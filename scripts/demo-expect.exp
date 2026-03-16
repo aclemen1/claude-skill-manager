@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+# Automated demo of sm tui in sandboxed environment
+
+set timeout 30
+
+# Launch the TUI in sandbox mode
+spawn uv run python scripts/demo-sandbox.py
+
+# Wait for TUI to fully load and render
+sleep 5
+
+# ── Scene 1: Explore sources (j to navigate, Enter to fold) ──
+send -- "j"; sleep 0.5
+send -- "j"; sleep 0.5
+send -- "\r\n"; sleep 0.6
+send -- "j"; sleep 0.5
+send -- "\r\n"; sleep 0.6
+send -- "j"; sleep 0.5
+send -- "j"; sleep 0.5
+sleep 1
+
+# ── Scene 2: Go to targets panel ─────────────────────────────
+send -- "\t"; sleep 0.8
+send -- "j"; sleep 0.5
+send -- "j"; sleep 0.5
+send -- "\r\n"; sleep 0.6
+send -- "j"; sleep 0.5
+send -- "j"; sleep 0.5
+sleep 1
+
+# ── Scene 3: Select a target (space) → toggle mode ──────────
+send -- " "; sleep 1.5
+
+# ── Scene 4: Toggle skills with x ───────────────────────────
+send -- "\t"; sleep 0.5
+send -- "j"; sleep 0.4
+send -- "j"; sleep 0.4
+send -- "j"; sleep 0.4
+send -- "x"; sleep 0.8
+send -- "j"; sleep 0.4
+send -- "x"; sleep 1
+
+# ── Scene 5: View pending changes ───────────────────────────
+send -- "\t"; sleep 0.5
+send -- "\t"; sleep 1.5
+
+# ── Scene 6: Apply modal (then cancel) ──────────────────────
+send -- "a"; sleep 2
+send -- "\x1b"; sleep 1
+
+# ── Scene 7: Help ────────────────────────────────────────────
+send -- "?"; sleep 2.5
+send -- "\x1b"; sleep 0.8
+
+# ── Scene 8: Settings ────────────────────────────────────────
+send -- "s"; sleep 2.5
+send -- "\x1b"; sleep 0.8
+
+# ── Scene 9: Quit ────────────────────────────────────────────
+sleep 0.5
+send -- "q"
+sleep 1
+
+expect eof
