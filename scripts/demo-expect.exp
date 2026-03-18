@@ -1,5 +1,5 @@
 #!/usr/bin/expect -f
-# Automated demo of sm tui in sandboxed environment
+# Automated demo of csm tui in sandboxed environment
 
 set timeout 30
 

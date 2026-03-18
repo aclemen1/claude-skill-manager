@@ -14,8 +14,7 @@ from skill_manager.core.config import save_config
 @pytest.fixture
 def tui_env(tmp_path, monkeypatch):
     """Set up an isolated environment with skills, targets, and config."""
-    config_path = tmp_path / "sm.toml"
-    lock_path = tmp_path / "sm.lock"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
 
@@ -535,7 +534,7 @@ async def test_selection_clears_on_other_side(tui_env):
 @pytest.fixture
 def tui_env_with_orphans(tmp_path, monkeypatch):
     """Environment with skills, targets, and orphan skills in a target."""
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
 

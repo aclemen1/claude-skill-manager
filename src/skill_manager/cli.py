@@ -1,4 +1,4 @@
-"""CLI entry point for skill-manager.
+"""CLI entry point for claude-skill-manager.
 
 Core model:  S (sources) × T (targets) → installs
 """
@@ -29,17 +29,17 @@ from skill_manager.core.inventory import is_plugin_source
 from skill_manager.core.conflicts import detect_conflicts
 
 app = typer.Typer(
-    name="sm",
+    name="csm",
     help=(
-        "Skill Manager (sm) — manage Claude Code skills across projects.\n\n"
+        "Claude Skill Manager (csm) — manage Claude Code skills across projects.\n\n"
         "Core model: S (sources) × T (targets) → installs.\n\n"
         "Sources are directories containing SKILL.md files "
         "or Claude Code marketplace plugins. "
         "Targets are projects with a .claude/ directory. "
-        "Installs are symlinks (managed by sm) or plugins (managed by Claude Code). "
-        "Config file: ~/.config/skill-manager/sm.toml (glob patterns for paths).\n\n"
+        "Installs are symlinks (managed by csm) or plugins (managed by Claude Code). "
+        "Config file: ~/.config/claude-skill-manager/csm.toml (glob patterns for paths).\n\n"
         "Use --json on any command for machine-readable output. "
-        "Use 'sm schema' for full LLM/agent documentation."
+        "Use 'csm schema' for full LLM/agent documentation."
     ),
     invoke_without_command=True,
 )
@@ -235,7 +235,7 @@ def targets():
 
 @app.command()
 def installs():
-    """List all current installs: symlinks (managed by sm), plugins (managed by Claude Code), and orphans (unmanaged)."""
+    """List all current installs: symlinks (managed by csm), plugins (managed by Claude Code), and orphans (unmanaged)."""
     import json as json_mod
     config = load_config()
     items = discover_all(config)
@@ -531,9 +531,9 @@ def tui():
 
 @app.command()
 def init():
-    """Create a default ~/.config/skill-manager/sm.toml config file with example glob patterns."""
+    """Create a default ~/.config/claude-skill-manager/csm.toml config file with example glob patterns."""
     config_dir = ensure_config_dir()
-    config_path = config_dir / "sm.toml"
+    config_path = config_dir / "csm.toml"
 
     if config_path.exists():
         console.print(f"[yellow]Already exists: {config_path}[/yellow]")
@@ -542,7 +542,7 @@ def init():
 
     config_path.write_text("""\
 # Skill Manager configuration
-# Docs: https://github.com/aclemen1/skill-manager
+# Docs: https://github.com/aclemen1/claude-skill-manager
 #
 # Paths support glob patterns:
 #   ~              exact (this directory only)
@@ -564,14 +564,14 @@ target_paths = ["~"]
 
 @app.command()
 def schema():
-    """Output a JSON schema describing all sm commands, concepts, and config format — designed for LLM/agent consumption."""
+    """Output a JSON schema describing all csm commands, concepts, and config format — designed for LLM/agent consumption."""
     import json
 
     schema = {
-        "tool": "sm",
+        "tool": "csm",
         "version": "0.1.0",
         "description": (
-            "Skill Manager (sm) manages Claude Code skills across projects. "
+            "Claude Skill Manager (csm) manages Claude Code skills across projects. "
             "It discovers skills from local directories and Claude Code marketplace plugins, "
             "and installs them into target projects via symlinks or plugin install. "
             "All query commands support --json for machine-readable output."
@@ -583,13 +583,13 @@ def schema():
         "concepts": {
             "source": "A directory containing skill subdirectories (each with SKILL.md) or a Claude Code marketplace plugin.",
             "target": "A project directory containing .claude/ — skills are installed into .claude/skills/ via symlinks.",
-            "install": "A (source, target) pair. Symlinks are managed by sm; plugins are managed by Claude Code CLI.",
+            "install": "A (source, target) pair. Symlinks are managed by csm; plugins are managed by Claude Code CLI.",
             "orphan": "A skill directory in .claude/skills/ that is not a symlink and not from any known source.",
             "SKILL.md": "A markdown file with YAML frontmatter (name, description) that defines a skill. Must be in a subdirectory.",
             "glob_pattern": "Config paths support glob: ~ (exact), ~/code/* (children), ~/vaults/** (recursive), ~/code/*/backend (pattern).",
         },
         "config": {
-            "path": "~/.config/skill-manager/sm.toml",
+            "path": "~/.config/claude-skill-manager/csm.toml",
             "format": "TOML",
             "keys": {
                 "plugins": {"type": "bool", "default": True, "description": "Enable Claude Code marketplace plugin discovery."},
@@ -603,59 +603,59 @@ def schema():
         },
         "commands": [
             {
-                "name": "sources", "usage": "sm sources [--no-plugins] [--json]",
+                "name": "sources", "usage": "csm sources [--no-plugins] [--json]",
                 "description": "List all discovered sources with their skills.",
-                "examples": ["sm sources", "sm sources --no-plugins", "sm --json sources"],
+                "examples": ["csm sources", "csm sources --no-plugins", "csm --json sources"],
             },
             {
-                "name": "targets", "usage": "sm targets [--json]",
+                "name": "targets", "usage": "csm targets [--json]",
                 "description": "List all discovered targets with install counts.",
-                "examples": ["sm targets", "sm --json targets"],
+                "examples": ["csm targets", "csm --json targets"],
             },
             {
-                "name": "installs", "usage": "sm installs [--json]",
+                "name": "installs", "usage": "csm installs [--json]",
                 "description": "List all current installs (symlinks, plugins, orphans) with their state.",
-                "examples": ["sm installs", "sm --json installs"],
+                "examples": ["csm installs", "csm --json installs"],
             },
             {
-                "name": "install", "usage": "sm install SKILL_NAME --to TARGET [--dry-run]",
+                "name": "install", "usage": "csm install SKILL_NAME --to TARGET [--dry-run]",
                 "description": "Install a local skill into a target via symlink. Checks for name conflicts before applying.",
-                "examples": ["sm install my-skill --to user", "sm install my-skill --to GEMM --dry-run"],
+                "examples": ["csm install my-skill --to user", "csm install my-skill --to GEMM --dry-run"],
             },
             {
-                "name": "uninstall", "usage": "sm uninstall TARGET",
+                "name": "uninstall", "usage": "csm uninstall TARGET",
                 "description": "Remove all skill symlinks from a target's .claude/skills/.",
-                "examples": ["sm uninstall user", "sm uninstall GEMM"],
+                "examples": ["csm uninstall user", "csm uninstall GEMM"],
             },
             {
-                "name": "list", "usage": "sm list [--source NAME] [--no-plugins] [--json]",
+                "name": "list", "usage": "csm list [--source NAME] [--no-plugins] [--json]",
                 "description": "Unified inventory with install state (installed/available/broken) per item.",
-                "examples": ["sm list", "sm list --no-plugins", "sm --json list"],
+                "examples": ["csm list", "csm list --no-plugins", "csm --json list"],
             },
             {
-                "name": "diagnostics", "usage": "sm diagnostics [--all] [--json]",
+                "name": "diagnostics", "usage": "csm diagnostics [--all] [--json]",
                 "description": "Detect per-target name collisions and issues. --all includes INFO-level.",
-                "examples": ["sm diagnostics", "sm diagnostics --all", "sm --json diagnostics"],
+                "examples": ["csm diagnostics", "csm diagnostics --all", "csm --json diagnostics"],
             },
             {
-                "name": "updates", "usage": "sm updates",
+                "name": "updates", "usage": "csm updates",
                 "description": "Detect stale plugin cache (multiple versions in same scope/project). Interactive update prompt.",
-                "examples": ["sm updates"],
+                "examples": ["csm updates"],
             },
             {
-                "name": "tui", "usage": "sm tui",
+                "name": "tui", "usage": "csm tui",
                 "description": "Launch the interactive terminal UI with sources/targets panels.",
-                "examples": ["sm tui"],
+                "examples": ["csm tui"],
             },
             {
-                "name": "init", "usage": "sm init",
-                "description": "Create a default sm.toml config file.",
-                "examples": ["sm init"],
+                "name": "init", "usage": "csm init",
+                "description": "Create a default csm.toml config file.",
+                "examples": ["csm init"],
             },
             {
-                "name": "schema", "usage": "sm schema",
+                "name": "schema", "usage": "csm schema",
                 "description": "Output this JSON schema for LLM/agent consumption.",
-                "examples": ["sm schema"],
+                "examples": ["csm schema"],
             },
         ],
         "diagnostics_types": [

@@ -14,7 +14,7 @@ from skill_manager.core.config import save_config, load_config
 @pytest.fixture
 def settings_env(tmp_path, monkeypatch):
     """Isolated environment with a config file for settings tests."""
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
     monkeypatch.setattr("skill_manager.tui.screens.settings.DEFAULT_CONFIG_PATH", config_path)

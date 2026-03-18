@@ -1,6 +1,6 @@
 [project]
-name = "skill-manager"
-version = "0.1.0"
+name = "claude-skill-manager"
+version = "0.2.0"
 description = "Manage Claude Code skills from multiple sources with symlink-based deployment"
 readme = "README.md"
 license = "MIT"
@@ -28,15 +28,15 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/aclemen1/skill-manager"
-Repository = "https://github.com/aclemen1/skill-manager"
-Issues = "https://github.com/aclemen1/skill-manager/issues"
+Homepage = "https://github.com/aclemen1/claude-skill-manager"
+Repository = "https://github.com/aclemen1/claude-skill-manager"
+Issues = "https://github.com/aclemen1/claude-skill-manager/issues"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=7.0"]
 
 [project.scripts]
-sm = "skill_manager.cli:app"
+csm = "skill_manager.cli:app"
 
 [build-system]
 requires = ["hatchling"]

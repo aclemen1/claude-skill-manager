@@ -138,7 +138,7 @@ _UPTODATE_PLUGINS = [
 @pytest.fixture
 def tui_update_env(tmp_path, monkeypatch):
     """TUI environment with mock outdated plugins."""
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
 

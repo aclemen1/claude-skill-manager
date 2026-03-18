@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record an automated demo of sm tui in a sandboxed environment.
+# Record an automated demo of csm tui in a sandboxed environment.
 #
 # Usage: ./scripts/record-demo.sh
 # Output: docs/demo.cast  (asciinema recording)

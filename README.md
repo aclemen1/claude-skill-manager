@@ -1,4 +1,4 @@
-# Skill Manager (sm)
+# Claude Skill Manager (csm)
 
 Manage [Claude Code](https://claude.ai/claude-code) skills across projects from a single place.
 
@@ -21,29 +21,29 @@ Claude Code requires skills to live **flat** inside each project's `.claude/skil
 ~/project-b/.claude/skills/meeting-prep/SKILL.md
 ```
 
-**sm** solves this by creating symlinks from your organized skill library into each project's `.claude/skills/` directory. You maintain skills in one place, and deploy them anywhere.
+**csm** solves this by creating symlinks from your organized skill library into each project's `.claude/skills/` directory. You maintain skills in one place, and deploy them anywhere.
 
 ## Agent-Friendly by Design
 
-sm is built to be used by both humans and LLM agents:
+csm is built to be used by both humans and LLM agents:
 
-- **`sm schema`** outputs a complete JSON document describing all commands, concepts, config format, and keybindings — designed to be injected into an agent's context
+- **`csm schema`** outputs a complete JSON document describing all commands, concepts, config format, and keybindings — designed to be injected into an agent's context
 - **`--json`** flag on every query command for structured, parseable output
 - **Errors are always JSON** on stderr (even without `--json`), following the same structured format as [GWS](https://github.com/googleworkspace/cli)
-- **No interactive prompts** in JSON mode — agents can script `sm` safely
+- **No interactive prompts** in JSON mode — agents can script `csm` safely
 
 An agent can bootstrap itself with:
 
 ```bash
-sm schema | head -c 4000  # inject into system prompt
-sm --json sources          # discover what's available
-sm --json targets          # discover where to deploy
-sm install my-skill --to my-project  # deploy
+csm schema | head -c 4000  # inject into system prompt
+csm --json sources          # discover what's available
+csm --json targets          # discover where to deploy
+csm install my-skill --to my-project  # deploy
 ```
 
 ## Core Concept
 
-sm connects **sources** (where skills live) to **targets** (where Claude Code looks for them):
+csm connects **sources** (where skills live) to **targets** (where Claude Code looks for them):
 
 | | Description | Example |
 |---|---|---|
@@ -53,39 +53,39 @@ sm connects **sources** (where skills live) to **targets** (where Claude Code lo
 
 ## Demo
 
-<img src="docs/demo.gif" alt="sm TUI demo" width="100%">
+<img src="docs/demo.gif" alt="csm TUI demo" width="100%">
 
 ## Installation
 
 ### With Homebrew (macOS)
 
 ```bash
-brew install aclemen1/tap/skill-manager
+brew install aclemen1/tap/claude-skill-manager
 ```
 
 ### With uv (any platform)
 
 ```bash
-uv tool install skill-manager
+uv tool install claude-skill-manager
 ```
 
 ### With pip
 
 ```bash
-pip install skill-manager
+pip install claude-skill-manager
 ```
 
 ## Quick Start
 
 ```bash
 # 1. Create a config file
-sm init
+csm init
 
 # 2. Edit config to add your source and target paths
-cat ~/.config/skill-manager/sm.toml
+cat ~/.config/claude-skill-manager/csm.toml
 ```
 
-Example `sm.toml`:
+Example `csm.toml` :
 
 ```toml
 source_paths = ["~/code/my-org/*", "~/skills-library"]
@@ -100,43 +100,43 @@ Paths support glob patterns:
 
 ```bash
 # 3. Explore what's available
-sm sources          # list all discovered skills
-sm targets          # list all projects with .claude/
-sm list             # unified inventory with install state
+csm sources          # list all discovered skills
+csm targets          # list all projects with .claude/
+csm list             # unified inventory with install state
 
 # 4. Install a skill
-sm install my-skill --to my-project
+csm install my-skill --to my-project
 
-# 5. Or use the interactive TUI
-sm tui
+# 5. Or use the interactive TUI (or just: csm)
+csm
 ```
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `sm sources` | List all discovered sources (local skills, marketplace plugins) |
-| `sm targets` | List all targets with install counts |
-| `sm installs` | List all current installs (symlinks, plugins, orphans) |
-| `sm install SKILL --to TARGET` | Install a local skill into a target via symlink |
-| `sm uninstall TARGET` | Remove skill symlinks from a target |
-| `sm list` | Unified inventory with install state per item |
-| `sm diagnostics` | Detect per-target name collisions and issues |
-| `sm updates` | Detect stale plugin cache |
-| `sm tui` | Launch the interactive terminal UI |
-| `sm init` | Create a default config file |
-| `sm schema` | Output JSON schema for LLM/agent consumption |
+| `csm` | Launch the interactive TUI (default when no subcommand) |
+| `csm sources` | List all discovered sources (local skills, marketplace plugins) |
+| `csm targets` | List all targets with install counts |
+| `csm installs` | List all current installs (symlinks, plugins, orphans) |
+| `csm install SKILL --to TARGET` | Install a local skill into a target via symlink |
+| `csm uninstall TARGET` | Remove skill symlinks from a target |
+| `csm list` | Unified inventory with install state per item |
+| `csm diagnostics` | Detect per-target name collisions and issues |
+| `csm updates` | Detect stale plugin cache |
+| `csm init` | Create a default config file |
+| `csm schema` | Output JSON schema for LLM/agent consumption |
 
 ### JSON output
 
 All query commands support `--json` for machine-readable output:
 
 ```bash
-sm --json sources    # JSON array of sources with items
-sm --json targets    # JSON array of targets with counts
-sm --json installs   # JSON array of all installs
-sm --json list       # JSON inventory with install state
-sm --json diagnostics --all  # JSON diagnostics
+csm --json sources    # JSON array of sources with items
+csm --json targets    # JSON array of targets with counts
+csm --json installs   # JSON array of all installs
+csm --json list       # JSON inventory with install state
+csm --json diagnostics --all  # JSON diagnostics
 ```
 
 Errors are always returned as structured JSON on stderr:
@@ -154,7 +154,7 @@ Errors are always returned as structured JSON on stderr:
 ### LLM/Agent integration
 
 ```bash
-sm schema  # outputs full JSON documentation for LLM consumption
+csm schema  # outputs full JSON documentation for LLM consumption
 ```
 
 The `schema` command outputs a structured JSON document with all commands, concepts, config format, diagnostic types, and TUI keybindings — designed to be injected into an LLM context for tool use.
@@ -194,11 +194,11 @@ The `schema` command outputs a structured JSON document with all commands, conce
 | `r` | Refresh (rescan all sources) |
 | `q` | Quit |
 
-Theme selection previews each theme in real time as you navigate the list. The chosen theme is persisted in `sm.toml`.
+Theme selection previews each theme in real time as you navigate the list. The chosen theme is persisted in `csm.toml`.
 
 ## Diagnostics
 
-sm detects issues **per target** — two skills with the same name only conflict if they're both active in the same project:
+csm detects issues **per target** — two skills with the same name only conflict if they're both active in the same project:
 
 | Type | Severity | Description |
 |------|----------|-------------|
@@ -210,7 +210,7 @@ sm detects issues **per target** — two skills with the same name only conflict
 
 ## Configuration
 
-Config file: `~/.config/skill-manager/sm.toml`
+Config file: `~/.config/claude-skill-manager/csm.toml`
 
 ```toml
 # Enable Claude Code marketplace plugin discovery (default: true)
@@ -255,9 +255,9 @@ But as a developer, you want to **organize** your skills by topic, team, or libr
   productivity/meeting-prep/SKILL.md
 ```
 
-### Symlink-based deployment (managed by sm)
+### Symlink-based deployment (managed by csm)
 
-sm bridges the gap with **symlinks**. When you install a skill into a target, sm creates a symlink in the target's `.claude/skills/` directory pointing back to the source:
+csm bridges the gap with **symlinks**. When you install a skill into a target, csm creates a symlink in the target's `.claude/skills/` directory pointing back to the source:
 
 ```
 ~/project-a/.claude/skills/
@@ -269,25 +269,25 @@ The skill lives in one place (the source library), but is visible to Claude Code
 
 ### Marketplace plugins (managed by Claude Code)
 
-For Claude Code marketplace plugins, sm provides a **unified view** of all installed plugins across all your projects and scopes (user/project). Install and uninstall operations are delegated to the `claude plugin` CLI. The toggle operates at the **plugin level** (not individual skills), since Claude Code installs entire plugins.
+For Claude Code marketplace plugins, csm provides a **unified view** of all installed plugins across all your projects and scopes (user/project). Install and uninstall operations are delegated to the `claude plugin` CLI. The toggle operates at the **plugin level** (not individual skills), since Claude Code installs entire plugins.
 
 ### Orphans
 
-Skills found in `.claude/skills/` that are neither symlinks to known sources nor installed via plugins are flagged as **orphans** (shown with `?` in the TUI). These are typically skills that were copied manually. sm shows them for awareness but doesn't manage them.
+Skills found in `.claude/skills/` that are neither symlinks to known sources nor installed via plugins are flagged as **orphans** (shown with `?` in the TUI). These are typically skills that were copied manually. csm shows them for awareness but doesn't manage them.
 
 ## Development
 
 ```bash
 # Clone and install
-git clone https://github.com/aclemen1/skill-manager.git
-cd skill-manager
+git clone https://github.com/aclemen1/claude-skill-manager.git
+cd claude-skill-manager
 uv sync
 
 # Run tests
 uv run pytest
 
 # Run the TUI locally
-uv run sm tui
+uv run csm
 
 # Run with coverage
 uv run pytest --cov=skill_manager

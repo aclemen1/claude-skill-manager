@@ -24,7 +24,7 @@ def test_roundtrip(tmp_path: Path):
         target_paths=[str(tmp_path)],
     )
 
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     save_config(config, config_path)
 
     loaded = load_config(config_path)
@@ -41,7 +41,7 @@ def test_glob_patterns_preserved(tmp_path: Path):
         target_paths=["~", "~/code/*/backend"],
     )
 
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     save_config(config, config_path)
 
     loaded = load_config(config_path)
@@ -109,7 +109,7 @@ def test_multiple_paths_roundtrip(tmp_path: Path):
 def test_save_creates_parent_dirs(tmp_path: Path):
     """save_config creates parent directories if they don't exist."""
     config = SmConfig(source_paths=["~/skills"])
-    nested_path = tmp_path / "deep" / "nested" / "sm.toml"
+    nested_path = tmp_path / "deep" / "nested" / "csm.toml"
     save_config(config, nested_path)
     loaded = load_config(nested_path)
     assert loaded.source_paths == ["~/skills"]

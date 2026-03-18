@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a sandbox environment and launch sm tui for demo recording.
+"""Create a sandbox environment and launch csm tui for demo recording.
 
 Usage:
     uv run python scripts/demo-sandbox.py
@@ -13,7 +13,7 @@ from pathlib import Path
 
 def create_sandbox() -> Path:
     """Create a realistic-looking sandbox with fake skills and projects."""
-    base = Path(tempfile.mkdtemp(prefix="sm-demo-"))
+    base = Path(tempfile.mkdtemp(prefix="csm-demo-"))
 
     # ── Skill libraries ──────────────────────────────────────
     skills = {
@@ -75,7 +75,7 @@ def create_sandbox() -> Path:
     # ── Config ───────────────────────────────────────────────
     config_dir = base / "config"
     config_dir.mkdir()
-    config = config_dir / "sm.toml"
+    config = config_dir / "csm.toml"
     config.write_text(f"""\
 plugins = false
 source_paths = ["{base}/skills/*"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive the sm tui demo — sends keystrokes while the TUI runs in the foreground.
+"""Drive the csm tui demo — sends keystrokes while the TUI runs in the foreground.
 
 Usage (standalone test):
     uv run python scripts/demo-driver.py

@@ -1,4 +1,4 @@
-"""Configuration loading from sm.toml."""
+"""Configuration loading from csm.toml."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import tomli_w
 
 from skill_manager.models import SmConfig
 
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "skill-manager"
-DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "sm.toml"
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "claude-skill-manager"
+DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "csm.toml"
 
 
 def load_config(path: Path | None = None) -> SmConfig:

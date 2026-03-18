@@ -1,4 +1,4 @@
-"""Data models for skill-manager.
+"""Data models for claude-skill-manager.
 
 Core abstraction:
     S = set of sources
@@ -31,7 +31,7 @@ class InstallState(StrEnum):
     BROKEN = "broken"
 
 
-# ── Config models (parsed from sm.toml) ──────────────────────
+# ── Config models (parsed from csm.toml) ─────────────────────
 
 
 class SourceConfig(BaseModel):
@@ -84,7 +84,7 @@ class DiscoveredItem(BaseModel):
 
 
 class InstallMethod(StrEnum):
-    SYMLINK = "symlink"  # managed by sm (symlink to a known source)
+    SYMLINK = "symlink"  # managed by csm (symlink to a known source)
     PLUGIN = "plugin"  # managed by Claude Code
     ORPHAN = "orphan"  # present in target but no known source
 

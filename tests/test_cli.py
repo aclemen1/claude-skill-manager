@@ -15,8 +15,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def isolated_config(tmp_path: Path, monkeypatch):
-    config_path = tmp_path / "sm.toml"
-    lock_path = tmp_path / "sm.lock"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
 
@@ -94,7 +93,7 @@ def test_schema():
     result = runner.invoke(app, ["schema"])
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["tool"] == "sm"
+    assert data["tool"] == "csm"
     assert "concepts" in data
     assert "commands" in data
     assert "config" in data
@@ -187,7 +186,7 @@ def test_diagnostics_json(isolated_config):
 def test_sources_json_empty(tmp_path, monkeypatch):
     """Empty config with no sources produces an empty JSON array."""
     import json
-    config_path = tmp_path / "sm.toml"
+    config_path = tmp_path / "csm.toml"
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
     monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
     from skill_manager.core.config import save_config
