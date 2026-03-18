@@ -133,6 +133,15 @@ jobs:
           TAG="v${VERSION}"
           cd /tmp/bottles
 
+          # Rename bottle: brew uses -- separator, Homebrew expects single -
+          for f in *--*.tar.gz; do
+            mv "$f" "$(echo "$f" | sed 's/--/-/')"
+          done
+          # Also fix the JSON references
+          for f in *.json; do
+            sed -i '' 's/--/-/' "$f"
+          done
+
           BOTTLE=$(ls *.tar.gz | head -1)
 
           # Create release on homebrew-tap and upload bottle
