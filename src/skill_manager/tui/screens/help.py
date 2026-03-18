@@ -21,6 +21,11 @@ HELP_TEXT = """\
 
 [bold]Install / Uninstall[/bold]
   x              Toggle install/uninstall
+  A              Adopt orphan (move to source library)
+
+[bold]Preview[/bold]
+  p              Preview SKILL.md
+  e              Edit (in preview, local skills only)
 
 [bold]Pending Changes[/bold]
   a              Apply all pending changes

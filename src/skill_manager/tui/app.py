@@ -649,6 +649,16 @@ class SkillManagerApp(App):
         installs = all_installs(self.all_targets, self.all_sources, self.items)
         self.push_screen(ConflictsScreen(self.items, installs, self.all_targets))
 
+    # ── Skill preview ──────────────────────────────────────────
+
+    def on_source_panel_preview_skill(self, event) -> None:
+        from skill_manager.tui.screens.preview import PreviewScreen
+        self.push_screen(PreviewScreen(event.path, event.editable))
+
+    def on_target_panel_preview_skill(self, event) -> None:
+        from skill_manager.tui.screens.preview import PreviewScreen
+        self.push_screen(PreviewScreen(event.path, event.editable))
+
     # ── Orphan adoption ────────────────────────────────────────
 
     def on_target_panel_adopt_orphan(self, event: TargetPanel.AdoptOrphan) -> None:

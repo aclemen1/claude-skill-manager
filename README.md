@@ -185,6 +185,13 @@ The `schema` command outputs a structured JSON document with all commands, conce
 | `d` | Delete selected pending change |
 | `Esc` | Cancel all pending changes |
 
+### Preview
+
+| Key | Action |
+|-----|--------|
+| `p` | Preview SKILL.md (source panel: any skill; target panel: orphans) |
+| `e` | Edit in `$EDITOR` (inside preview modal, local skills only) |
+
 ### Modals and Actions
 
 | Key | Action |

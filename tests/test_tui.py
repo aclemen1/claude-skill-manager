@@ -853,3 +853,123 @@ async def test_a_key_ignored_on_non_orphan_nodes(tui_env_with_orphans):
         await pilot.press("A")
         await pilot.pause()
         assert len(app.screen_stack) == 1
+
+
+# ── Skill preview (TUI) ─────────────────────────────────────
+
+
+async def _nav_to_first_skill(pilot, tree, max_steps=20):
+    """Navigate to the first skill leaf node with a DiscoveredItem."""
+    from skill_manager.models import DiscoveredItem
+    for _ in range(max_steps):
+        node = tree.cursor_node
+        if node and isinstance(node.data, tuple):
+            if node.data[0] in ("select", "select_plugin") and isinstance(node.data[1], DiscoveredItem):
+                return True
+        await pilot.press("j")
+    return False
+
+
+@pytest.mark.asyncio
+async def test_preview_key_opens_modal_from_source(tui_env):
+    """Pressing p on a skill in the source panel opens PreviewScreen."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        src_tree = app.query_one("#src-tree")
+        # Expand local section and navigate to a skill leaf
+        for _ in range(10):
+            await pilot.press("j")
+        await pilot.press("l")  # expand
+        for _ in range(5):
+            await pilot.press("j")
+
+        assert await _nav_to_first_skill(pilot, src_tree)
+
+        await pilot.press("p")
+        await pilot.pause()
+
+        # PreviewScreen should be pushed
+        assert len(app.screen_stack) > 1
+
+        # Close it
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+
+
+@pytest.mark.asyncio
+async def test_preview_key_opens_modal_from_orphan(tui_env_with_orphans):
+    """Pressing p on an orphan node opens PreviewScreen."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "myproj":
+                break
+            await pilot.press("j")
+
+        await pilot.press("l")  # expand to reveal orphans
+        await pilot.press("j")  # move to first orphan
+
+        assert await _nav_to_orphan_child(pilot, tgt_tree)
+
+        await pilot.press("p")
+        await pilot.pause()
+
+        assert len(app.screen_stack) > 1
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+
+
+@pytest.mark.asyncio
+async def test_preview_shows_skill_content(tui_env):
+    """PreviewScreen displays the content of the SKILL.md file."""
+    from skill_manager.tui.app import SkillManagerApp
+    from skill_manager.tui.screens.preview import PreviewScreen
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        src_tree = app.query_one("#src-tree")
+        for _ in range(10):
+            await pilot.press("j")
+        await pilot.press("l")
+        for _ in range(5):
+            await pilot.press("j")
+
+        assert await _nav_to_first_skill(pilot, src_tree)
+
+        await pilot.press("p")
+        await pilot.pause()
+
+        # The top screen should be a PreviewScreen
+        assert isinstance(app.screen, PreviewScreen)
+        assert app.screen._skill_path.name == "SKILL.md"
+        assert app.screen._skill_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_preview_p_ignored_on_non_skill_nodes(tui_env):
+    """Pressing p on a non-skill node (e.g. section header) does nothing."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Cursor starts on the root section ("Local" or "Marketplaces") — not a skill
+        await pilot.press("p")
+        await pilot.pause()
+
+        # No modal should be pushed
+        assert len(app.screen_stack) == 1

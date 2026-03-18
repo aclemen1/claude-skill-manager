@@ -36,6 +36,7 @@ class _NavTree(Tree):
         Binding("x", "noop", "Toggle", show=True),
         Binding("l", "noop", "Expand", show=True),
         Binding("h", "noop", "Collapse", show=True),
+        Binding("p", "noop", "Preview", show=True),
         Binding("A", "noop", "Adopt", show=True),
     ]
 
@@ -63,6 +64,12 @@ class TargetPanel(Static):
             self.orphan_name = orphan_name
             self.orphan_path = orphan_path
             self.target = target
+
+    class PreviewSkill(Message):
+        def __init__(self, path: Path, editable: bool) -> None:
+            super().__init__()
+            self.path = path
+            self.editable = editable
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -494,6 +501,18 @@ class TargetPanel(Static):
 
     def on_key(self, event) -> None:
         tree = self.query_one("#tgt-tree", Tree)
+
+        # p → preview SKILL.md (orphan nodes only)
+        if event.key == "p":
+            node = tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "orphan":
+                _, name, origin, symlink, target = node.data
+                skill_md = origin / "SKILL.md"
+                if skill_md.exists():
+                    event.prevent_default()
+                    event.stop()
+                    self.post_message(self.PreviewSkill(skill_md, editable=True))
+                    return
 
         # A → adopt orphan (only on real-directory orphan nodes)
         if event.key == "A":

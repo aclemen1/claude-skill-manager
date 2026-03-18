@@ -782,6 +782,7 @@ def schema():
             "navigation": {"j/k": "Move down/up", "Enter": "Expand/collapse (fold)", "l": "Expand", "h": "Collapse or parent", "L": "Expand all", "H": "Collapse all"},
             "selection": {"Space": "Select (switch to toggle mode on other panel)", "Tab/Shift+Tab": "Cycle panels"},
             "install": {"x": "Toggle install/uninstall", "A": "Adopt orphan (move to source library)"},
+            "preview": {"p": "Preview SKILL.md", "e": "Edit (in preview modal, local skills only)"},
             "actions": {"a": "Apply pending changes", "d": "Delete pending change", "Esc": "Cancel all pending", "r": "Refresh", "q": "Quit"},
             "modals": {"s": "Settings", "D": "Diagnostics", "?": "Help"},
         },

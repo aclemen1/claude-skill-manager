@@ -74,6 +74,7 @@ class _NavTree(Tree):
         Binding("enter", "select_cursor", "Fold", key_display="⏎", show=True),
         Binding("space", "toggle_node", "Select", key_display="space", show=True),
         Binding("x", "noop", "Toggle", show=True),
+        Binding("p", "noop", "Preview", show=True),
         Binding("l", "noop", "Expand", show=True),
         Binding("h", "noop", "Collapse", show=True),
     ]
@@ -99,6 +100,12 @@ class SourcePanel(Static):
             self.source_name = source_name
             self.target = target
             self.currently_installed = currently_installed
+
+    class PreviewSkill(Message):
+        def __init__(self, path: Path, editable: bool) -> None:
+            super().__init__()
+            self.path = path
+            self.editable = editable
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -399,6 +406,25 @@ class SourcePanel(Static):
 
     def on_key(self, event) -> None:
         tree = self.query_one("#src-tree", Tree)
+
+        # p → preview SKILL.md
+        if event.key == "p":
+            node = tree.cursor_node
+            if node and isinstance(node.data, tuple):
+                item = None
+                if node.data[0] in ("select", "select_plugin", "toggle"):
+                    item = node.data[1]
+                if item and isinstance(item, DiscoveredItem):
+                    skill_md = item.path / "SKILL.md"
+                    if skill_md.exists():
+                        editable = not (
+                            item.source_name.startswith("mp:")
+                            or item.source_name.startswith("plugin:")
+                        )
+                        event.prevent_default()
+                        event.stop()
+                        self.post_message(self.PreviewSkill(skill_md, editable))
+                        return
 
         # x → toggle install/uninstall (toggle mode only)
         if event.key == "x":
