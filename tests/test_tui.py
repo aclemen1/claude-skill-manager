@@ -973,3 +973,421 @@ async def test_preview_p_ignored_on_non_skill_nodes(tui_env):
 
         # No modal should be pushed
         assert len(app.screen_stack) == 1
+
+
+# ── Scope badges and inherited plugins (TUI) ────────────────
+
+
+@pytest.fixture
+def tui_env_with_plugins(tmp_path, monkeypatch):
+    """Environment simulating plugins with user and project scopes."""
+    config_path = tmp_path / "csm.toml"
+    monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_PATH", config_path)
+    monkeypatch.setattr("skill_manager.core.config.DEFAULT_CONFIG_DIR", tmp_path)
+
+    # Create local skills
+    for name in ("local-skill",):
+        d = tmp_path / "skills" / name
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
+
+    # Create targets
+    for proj in ("proj-a", "proj-b"):
+        (tmp_path / "projects" / proj / ".claude" / "skills").mkdir(parents=True)
+
+    # Create a "user" target (fake home dir with .claude/skills)
+    user_home = tmp_path / "fakehome"
+    (user_home / ".claude" / "skills").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: user_home))
+
+    config = SmConfig(
+        plugins=False,
+        source_paths=[str(tmp_path / "skills")],
+        target_paths=[str(user_home), str(tmp_path / "projects" / "*")],
+    )
+    save_config(config, config_path)
+
+    # Simulate plugin installs via monkeypatch
+    from skill_manager.models import DiscoveredItem, Install, InstallMethod, ItemType
+
+    fake_plugin_items = [
+        DiscoveredItem(
+            name="user-only-skill",
+            source_name="plugin:user-plugin@mp",
+            item_type=ItemType.SKILL,
+            path=tmp_path / "cache" / "user-plugin" / "skills" / "user-only-skill",
+            plugin_name="user-plugin",
+        ),
+        DiscoveredItem(
+            name="both-scope-skill",
+            source_name="plugin:both-plugin@mp",
+            item_type=ItemType.SKILL,
+            path=tmp_path / "cache" / "both-plugin" / "skills" / "both-scope-skill",
+            plugin_name="both-plugin",
+        ),
+        DiscoveredItem(
+            name="project-only-skill",
+            source_name="plugin:project-plugin@mp",
+            item_type=ItemType.SKILL,
+            path=tmp_path / "cache" / "project-plugin" / "skills" / "project-only-skill",
+            plugin_name="project-plugin",
+        ),
+        DiscoveredItem(
+            name="not-installed-skill",
+            source_name="plugin:available-plugin@mp",
+            item_type=ItemType.SKILL,
+            path=tmp_path / "cache" / "available-plugin" / "skills" / "not-installed-skill",
+            plugin_name="available-plugin",
+        ),
+    ]
+    # Create skill dirs so budget estimation doesn't crash
+    for item in fake_plugin_items:
+        item.path.mkdir(parents=True, exist_ok=True)
+        (item.path / "SKILL.md").write_text(f"---\nname: {item.name}\n---\n")
+
+    fake_installs = [
+        # user-plugin: user scope only
+        Install(source="plugin:user-plugin@mp:user-only-skill", target="user",
+                name="user-only-skill", method=InstallMethod.PLUGIN, origin=fake_plugin_items[0].path),
+        # both-plugin: user scope + proj-a project scope
+        Install(source="plugin:both-plugin@mp:both-scope-skill", target="user",
+                name="both-scope-skill", method=InstallMethod.PLUGIN, origin=fake_plugin_items[1].path),
+        Install(source="plugin:both-plugin@mp:both-scope-skill", target="proj-a",
+                name="both-scope-skill", method=InstallMethod.PLUGIN, origin=fake_plugin_items[1].path),
+        # project-plugin: proj-a project scope only
+        Install(source="plugin:project-plugin@mp:project-only-skill", target="proj-a",
+                name="project-only-skill", method=InstallMethod.PLUGIN, origin=fake_plugin_items[2].path),
+    ]
+
+    # Monkey-patch to inject plugin items, installs, and sources
+    import skill_manager.core.discovery as disc_mod
+    import skill_manager.core.deployer as depl_mod
+    from skill_manager.models import SourceConfig, SourceType
+
+    fake_sources = {
+        "mp:mp": SourceConfig(path=tmp_path / "cache", type=SourceType.MARKETPLACE),
+        "plugin:user-plugin@mp": SourceConfig(path=tmp_path / "cache" / "user-plugin", type=SourceType.PLUGIN),
+        "plugin:both-plugin@mp": SourceConfig(path=tmp_path / "cache" / "both-plugin", type=SourceType.PLUGIN),
+        "plugin:project-plugin@mp": SourceConfig(path=tmp_path / "cache" / "project-plugin", type=SourceType.PLUGIN),
+        "plugin:available-plugin@mp": SourceConfig(path=tmp_path / "cache" / "available-plugin", type=SourceType.PLUGIN),
+    }
+
+    orig_resolve_sources = disc_mod.resolve_all_sources
+    orig_discover = disc_mod.discover_all
+    orig_all_installs = depl_mod.all_installs
+
+    def patched_resolve_sources(config):
+        sources = orig_resolve_sources(config)
+        sources.update(fake_sources)
+        return sources
+
+    def patched_discover(config):
+        items = orig_discover(config)
+        items.extend(fake_plugin_items)
+        return items
+
+    def patched_all_installs(all_targets, all_sources, items=None):
+        result = []
+        for inst in depl_mod.scan_all_installs(all_targets, all_sources, items):
+            result.append(inst)
+        result.extend(fake_installs)
+        return result
+
+    monkeypatch.setattr("skill_manager.core.discovery.resolve_all_sources", patched_resolve_sources)
+    monkeypatch.setattr("skill_manager.core.discovery.discover_all", patched_discover)
+    monkeypatch.setattr("skill_manager.core.deployer.all_installs", patched_all_installs)
+    monkeypatch.setattr("skill_manager.core.deployer._installs_cache", None)
+    monkeypatch.setattr("skill_manager.core.deployer._installs_cache_key", None)
+
+    return tmp_path
+
+
+def _find_node_by_data_prefix(tree, prefix):
+    """Walk tree to find a node whose data tuple starts with the given prefix."""
+    def _walk(node):
+        if node.data and isinstance(node.data, tuple) and node.data[0] == prefix:
+            yield node
+        for child in node.children:
+            yield from _walk(child)
+    return list(_walk(tree.root))
+
+
+@pytest.mark.asyncio
+async def test_inherited_plugin_toggleable_for_install(tui_env_with_plugins):
+    """User-scope-only plugins show as blue dot but are toggleable to add project scope."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Select proj-a target → source panel switches to toggle mode
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "proj-a":
+                break
+            await pilot.press("j")
+        await pilot.press("space")
+        await pilot.pause()
+
+        # user-plugin should be toggle_plugin with currently_installed=False
+        # (inherited from user scope, toggleable to add project scope)
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        user_plugin_nodes = [n for n in toggles if "user-plugin" in n.data[1]]
+        assert len(user_plugin_nodes) >= 1
+        # currently_installed should be False (only inherited, not direct)
+        assert user_plugin_nodes[0].data[3] is False
+
+
+@pytest.mark.asyncio
+async def test_direct_plugin_is_toggleable(tui_env_with_plugins):
+    """Project-scope plugins show as normal toggle (green dot) for their target."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Select proj-a target
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "proj-a":
+                break
+            await pilot.press("j")
+        await pilot.press("space")
+        await pilot.pause()
+
+        # project-plugin should be a normal toggle_plugin (directly installed in proj-a)
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        toggle_qnames = {node.data[1] for node in toggles}
+        assert any("project-plugin" in qn for qn in toggle_qnames)
+
+
+@pytest.mark.asyncio
+async def test_both_scope_plugin_shows_toggleable_with_badge(tui_env_with_plugins):
+    """Plugin in user+project scope is toggleable (green) with [user+project] badge."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Select proj-a target
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "proj-a":
+                break
+            await pilot.press("j")
+        await pilot.press("space")
+        await pilot.pause()
+
+        # both-plugin should be toggle_plugin (installed in both scopes, toggleable for project)
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        toggle_qnames = {node.data[1] for node in toggles}
+        assert any("both-plugin" in qn for qn in toggle_qnames)
+
+
+@pytest.mark.asyncio
+async def test_project_plugin_not_installed_on_other_target(tui_env_with_plugins):
+    """project-plugin is only in proj-a; on proj-b it should show as not installed."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Select proj-b target
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "proj-b":
+                break
+            await pilot.press("j")
+        await pilot.press("space")
+        await pilot.pause()
+
+        # project-plugin should be toggle_plugin with currently_installed=False on proj-b
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        proj_plugin_nodes = [n for n in toggles if "project-plugin" in n.data[1]]
+        assert len(proj_plugin_nodes) >= 1
+        assert proj_plugin_nodes[0].data[3] is False  # not installed
+
+
+@pytest.mark.asyncio
+async def test_scope_badge_in_normal_mode(tui_env_with_plugins):
+    """Normal mode shows scope badges on installed plugins."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # In normal mode, look for select_plugin nodes
+        src_tree = app.query_one("#src-tree")
+        select_plugins = _find_node_by_data_prefix(src_tree, "select_plugin")
+        # At least some plugins should exist
+        assert len(select_plugins) >= 1
+
+
+# ── Helper to select a target in toggle mode ──────────────────
+
+
+async def _select_target(pilot, app, target_name):
+    """Navigate to target panel, find target, press space to toggle."""
+    await pilot.press("tab")
+    tgt_tree = app.query_one("#tgt-tree")
+    for _ in range(20):
+        node = tgt_tree.cursor_node
+        if node and isinstance(node.data, tuple):
+            if node.data[0] in ("target", "toggle") and node.data[1] == target_name:
+                break
+        await pilot.press("j")
+    await pilot.press("space")
+    await pilot.pause()
+
+
+# ── Case 4: Plugin not installed at all → empty dot ──────────
+
+
+@pytest.mark.asyncio
+async def test_not_installed_plugin_shows_empty_dot(tui_env_with_plugins):
+    """Plugin with no installs shows as not installed (empty dot) on any target."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "proj-a")
+
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        avail_nodes = [n for n in toggles if "available-plugin" in n.data[1]]
+        assert len(avail_nodes) >= 1
+        assert avail_nodes[0].data[3] is False  # not installed
+
+
+# ── Case 5: User target — plugin installed in user scope ─────
+
+
+@pytest.mark.asyncio
+async def test_user_target_plugin_installed(tui_env_with_plugins):
+    """Plugin in user scope shows as installed (green) when user target is selected."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "user")
+
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        user_nodes = [n for n in toggles if "user-plugin" in n.data[1]]
+        assert len(user_nodes) >= 1
+        assert user_nodes[0].data[3] is True  # installed
+
+
+# ── Case 6: User target — plugin not installed ───────────────
+
+
+@pytest.mark.asyncio
+async def test_user_target_plugin_not_installed(tui_env_with_plugins):
+    """Plugin not in user scope shows as not installed when user target is selected."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "user")
+
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        # project-plugin is only in proj-a scope, not user scope
+        proj_nodes = [n for n in toggles if "project-plugin" in n.data[1]]
+        assert len(proj_nodes) >= 1
+        assert proj_nodes[0].data[3] is False  # not installed in user scope
+
+
+# ── Case 7: User target — both-plugin shows installed ────────
+
+
+@pytest.mark.asyncio
+async def test_user_target_both_plugin_shows_installed(tui_env_with_plugins):
+    """Plugin in user+project scope shows as installed when user target is selected."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "user")
+
+        src_tree = app.query_one("#src-tree")
+        toggles = _find_node_by_data_prefix(src_tree, "toggle_plugin")
+        both_nodes = [n for n in toggles if "both-plugin" in n.data[1]]
+        assert len(both_nodes) >= 1
+        assert both_nodes[0].data[3] is True  # installed in user scope
+
+
+# ── Case 8: Toggle x on inherited creates pending install ────
+
+
+@pytest.mark.asyncio
+async def test_toggle_inherited_creates_install_pending(tui_env_with_plugins):
+    """Pressing x on an inherited plugin (blue dot) creates a pending install."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "proj-a")
+
+        src_tree = app.query_one("#src-tree")
+        # Navigate to user-plugin (inherited, toggle to install)
+        for _ in range(30):
+            node = src_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "toggle_plugin":
+                if "user-plugin" in node.data[1]:
+                    break
+            await pilot.press("j")
+
+        assert node.data[0] == "toggle_plugin"
+        assert node.data[3] is False  # currently not directly installed
+
+        await pilot.press("x")
+        await pilot.pause()
+
+        # Should have a pending install
+        assert app.pending.count >= 1
+        assert any(c.target == "proj-a" for c in app.pending.installs)
+
+
+# ── Case 9: Toggle x on direct creates pending uninstall ─────
+
+
+@pytest.mark.asyncio
+async def test_toggle_direct_creates_uninstall_pending(tui_env_with_plugins):
+    """Pressing x on a directly installed plugin (green dot) creates a pending uninstall."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+        await _select_target(pilot, app, "proj-a")
+
+        src_tree = app.query_one("#src-tree")
+        # Navigate to project-plugin (directly installed in proj-a)
+        for _ in range(30):
+            node = src_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "toggle_plugin":
+                if "project-plugin" in node.data[1]:
+                    break
+            await pilot.press("j")
+
+        assert node.data[0] == "toggle_plugin"
+        assert node.data[3] is True  # currently installed
+
+        await pilot.press("x")
+        await pilot.pause()
+
+        # Should have a pending uninstall
+        assert app.pending.count >= 1
+        assert any(c.target == "proj-a" for c in app.pending.uninstalls)

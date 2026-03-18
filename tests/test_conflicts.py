@@ -231,3 +231,44 @@ def test_guard_no_existing_ok():
     pending = [("lib:foo", "foo", "proj")]
     issues = check_install_guards(pending, [], [])
     assert len(issues) == 0
+
+
+# ── Scope overlap diagnostics ────────────────────────────────
+
+
+def test_scope_overlap_detected():
+    """Plugin in user scope + project scope triggers scope-overlap diagnostic."""
+    items = [
+        _item("my-skill", "plugin:myplugin@mp"),
+    ]
+    installs = [
+        _install("plugin:myplugin@mp:my-skill", "user", InstallMethod.PLUGIN),
+        _install("plugin:myplugin@mp#1.0:my-skill", "myproj", InstallMethod.PLUGIN),
+    ]
+    diags = detect_diagnostics(items, installs)
+    overlap = [d for d in diags if d.conflict_type == "scope-overlap"]
+    assert len(overlap) == 1
+    assert overlap[0].name == "myplugin@mp"
+    assert overlap[0].severity == ConflictSeverity.INFO
+
+
+def test_scope_overlap_not_triggered_user_only():
+    """Plugin in user scope only does not trigger scope-overlap."""
+    items = [_item("s", "plugin:p@mp")]
+    installs = [
+        _install("plugin:p@mp:s", "user", InstallMethod.PLUGIN),
+    ]
+    diags = detect_diagnostics(items, installs)
+    overlap = [d for d in diags if d.conflict_type == "scope-overlap"]
+    assert len(overlap) == 0
+
+
+def test_scope_overlap_not_triggered_project_only():
+    """Plugin in project scope only does not trigger scope-overlap."""
+    items = [_item("s", "plugin:p@mp")]
+    installs = [
+        _install("plugin:p@mp:s", "myproj", InstallMethod.PLUGIN),
+    ]
+    diags = detect_diagnostics(items, installs)
+    overlap = [d for d in diags if d.conflict_type == "scope-overlap"]
+    assert len(overlap) == 0

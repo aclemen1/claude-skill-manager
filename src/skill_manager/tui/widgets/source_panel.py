@@ -15,7 +15,7 @@ from skill_manager.core.budget import get_token_estimate
 from skill_manager.core.deployer import get_install_state
 from skill_manager.core.inventory import is_plugin_source
 from skill_manager.models import (
-    DiscoveredItem, Install, InstallState, SmConfig, SourceConfig,
+    DiscoveredItem, Install, InstallMethod, InstallState, SmConfig, SourceConfig,
 )
 
 _HOME = str(Path.home())
@@ -53,6 +53,24 @@ def _cnt(items, all_targets, all_sources, all_items, **kw) -> str:
 
 
 # ── Shared icon/label helpers ────────────────────────────────
+
+
+def _strip_version_hash(qname: str) -> str:
+    """Strip version hash from a qualified name.
+
+    plugin:name@mp#ver:skill → plugin:name@mp:skill
+    """
+    if "#" not in qname:
+        return qname
+    before, after = qname.split("#", 1)
+    rest = after.split(":", 1)
+    return before + ":" + rest[1] if len(rest) > 1 else before
+
+
+def _matches_ignoring_version(item_qname: str, installed_qnames: set) -> bool:
+    """Check if item matches any install, ignoring version hashes."""
+    stripped = _strip_version_hash(item_qname)
+    return any(_strip_version_hash(iq) == stripped for iq in installed_qnames)
 
 
 def _icon_for_toggle(is_installed: bool, pending_action: str | None) -> tuple[str, str]:
@@ -202,7 +220,16 @@ class SourcePanel(Static):
         for item in items:
             by[item.source_name].append(item)
 
-        installed_qnames = {i.source for i in installs if i.source}
+        # Two separate sets: direct installs for this target, and user-scope plugins
+        self._direct_qnames = {i.source for i in installs if i.source}
+        self._user_inherited_qnames: set[str] = set()
+        if target_name != "user":
+            from skill_manager.core.deployer import all_installs as _all_installs
+            for inst in _all_installs(self._all_targets, self._all_sources_ref, items):
+                if inst.target == "user" and inst.method == InstallMethod.PLUGIN:
+                    self._user_inherited_qnames.add(inst.source)
+
+        installed_qnames = self._direct_qnames | self._user_inherited_qnames
         installed_names = {i.source.rsplit(":", 1)[-1] for i in installs if i.source}
         hl = installed_qnames
 
@@ -261,30 +288,77 @@ class SourcePanel(Static):
     def _skill_leaves(self, parent, items, iq, target, pending=None, inames=None):
         """Render skill leaves in toggle mode (checkbox, toggleable)."""
         inames = inames or set()
+        direct_qn = getattr(self, "_direct_qnames", set())
+        user_inherited = getattr(self, "_user_inherited_qnames", set())
         for item in sorted(items, key=lambda i: i.name):
-            is_i = item.qualified_name in iq or item.name in inames
-            pa = pending.is_pending(item.qualified_name, target) if pending else None
-            icon, mark = _icon_for_toggle(is_i, pa)
+            is_direct = (
+                item.qualified_name in direct_qn
+                or _matches_ignoring_version(item.qualified_name, direct_qn)
+                or item.qualified_name in iq or item.name in inames
+            )
+            is_inherited = (
+                item.qualified_name in user_inherited
+                or _matches_ignoring_version(item.qualified_name, user_inherited)
+            )
             tok = get_token_estimate(item)
             tok_str = f" [dim]{tok}t[/dim]" if tok else ""
             sel = "[bold reverse] " if item.qualified_name == self._selected_qname else ""
             sel_end = " [/bold reverse]" if sel else ""
-            parent.add_leaf(f"{icon} {sel}{item.name}{sel_end}{tok_str}{mark}", data=("toggle", item, is_i, target))
+            if is_inherited and not is_direct:
+                # Inherited from user scope: blue dot, toggleable to add project scope
+                pa = pending.is_pending(item.qualified_name, target) if pending else None
+                if pa == "install":
+                    i_icon = "[on green] ● [/on green]"
+                    i_mark = " [green]← install[/green]"
+                else:
+                    i_icon = "[blue] ● [/blue]"
+                    i_mark = ""
+                parent.add_leaf(f"{i_icon} {sel}{item.name}{sel_end}{tok_str}{i_mark}", data=("toggle", item, False, target))
+            else:
+                is_i = is_direct or is_inherited
+                pa = pending.is_pending(item.qualified_name, target) if pending else None
+                icon, mark = _icon_for_toggle(is_i, pa)
+                parent.add_leaf(f"{icon} {sel}{item.name}{sel_end}{tok_str}{mark}", data=("toggle", item, is_i, target))
 
     def _plugin_node(self, parent, plugin_name, marketplace_name, plugin_items, hl,
                      toggle_target=None, pending=None, installed_qnames=None,
-                     installed_names=None, expand=False):
+                     expand=False):
         """Render a plugin node with icon at plugin level, skills as info children.
 
         Works for both normal mode (toggle_target=None) and toggle mode.
         """
-        installed_names = installed_names or set()
+        # Compute scope badge (shown in all modes)
+        from skill_manager.core.deployer import get_installs_for_item
+        install_targets: set[str] = set()
+        for i in plugin_items:
+            for inst in get_installs_for_item(i, self._all_targets, self._all_sources_ref, self._items):
+                install_targets.add(inst.target)
+        has_user = "user" in install_targets
+        has_project = len(install_targets - {"user"}) > 0
+        if has_user and has_project:
+            scope_badge = " [yellow]\\[user+project][/yellow]"
+        elif has_user:
+            scope_badge = " [dim]\\[user][/dim]"
+        elif has_project:
+            scope_badge = " [dim]\\[project][/dim]"
+        else:
+            scope_badge = ""
+
         if toggle_target and installed_qnames is not None:
-            # Toggle mode: is_installed based on qnames or name match (handles version mismatch)
-            is_installed = any(
-                i.qualified_name in installed_qnames or i.name in installed_names
+            # Check if installed directly in this target vs inherited from user scope
+            direct_qn = getattr(self, "_direct_qnames", set())
+            user_inherited = getattr(self, "_user_inherited_qnames", set())
+            is_direct = any(
+                i.qualified_name in direct_qn
+                or _matches_ignoring_version(i.qualified_name, direct_qn)
                 for i in plugin_items
             )
+            is_inherited = any(
+                i.qualified_name in user_inherited
+                or _matches_ignoring_version(i.qualified_name, user_inherited)
+                for i in plugin_items
+            )
+            is_installed = is_direct or is_inherited
 
             # Find qname for toggle action
             plugin_qname = ""
@@ -295,9 +369,27 @@ class SourcePanel(Static):
             if not plugin_qname:
                 plugin_qname = plugin_items[0].qualified_name if plugin_items else ""
 
-            pa = pending.is_pending(plugin_qname, toggle_target) if pending else None
-            icon, mark = _icon_for_toggle(is_installed, pa)
-            data = ("toggle_plugin", plugin_qname, plugin_name, is_installed, toggle_target)
+            if is_inherited and not is_direct:
+                # Inherited from user scope: blue dot, toggleable to add project scope
+                pa = pending.is_pending(plugin_qname, toggle_target) if pending else None
+                if pa == "install":
+                    icon = "[on green] ● [/on green]"
+                    mark = " [green]← install[/green]"
+                else:
+                    icon = "[blue] ● [/blue]"
+                    mark = " [dim]via user scope[/dim]"
+                data = ("toggle_plugin", plugin_qname, plugin_name, False, toggle_target)
+            elif is_direct and is_inherited:
+                # Both scopes: green dot, toggleable (for project scope), with badge
+                pa = pending.is_pending(plugin_qname, toggle_target) if pending else None
+                icon, mark = _icon_for_toggle(True, pa)
+                mark = f" [yellow]\\[user+project][/yellow]{mark}"
+                data = ("toggle_plugin", plugin_qname, plugin_name, True, toggle_target)
+            else:
+                # Direct only or not installed: normal toggle
+                pa = pending.is_pending(plugin_qname, toggle_target) if pending else None
+                icon, mark = _icon_for_toggle(is_installed, pa)
+                data = ("toggle_plugin", plugin_qname, plugin_name, is_installed, toggle_target)
         else:
             # Normal mode: is_installed based on install state
             is_installed = any(
@@ -307,6 +399,7 @@ class SourcePanel(Static):
             icon = _si(InstallState.INSTALLED if is_installed else InstallState.AVAILABLE)
             is_hl = any(i.qualified_name in hl or i.name in {n.split(":")[-1] for n in hl} for i in plugin_items)
             mark = " [green]◄[/green]" if is_hl else ""
+            mark = f"{scope_badge}{mark}"
             data = ("select_plugin", plugin_items[0]) if plugin_items else None
 
         tok = sum(get_token_estimate(i) for i in plugin_items)
@@ -383,7 +476,6 @@ class SourcePanel(Static):
                 self._plugin_node(mp_nd, pn, mn, pi, hl,
                                   toggle_target=toggle_target, pending=pending,
                                   installed_qnames=hl if toggle_target else None,
-                                  installed_names=installed_names if toggle_target else None,
                                   expand=should_open)
 
     # ── Events ────────────────────────────────────────────────

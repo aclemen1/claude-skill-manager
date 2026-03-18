@@ -216,6 +216,7 @@ csm detects issues **per target** — two skills with the same name only conflic
 | `user-plugin` | WARNING | A local skill shadows a Claude Code plugin |
 | `orphan-plugin` | WARNING | An unmanaged skill copy coexists with a plugin |
 | `cross-marketplace` | WARNING | Same skill name from different marketplaces |
+| `scope-overlap` | INFO | A plugin is installed in both user scope and project scope |
 | `mp-cache` | INFO | Normal: marketplace catalog and installed cache |
 
 ## Configuration
@@ -289,6 +290,16 @@ The skill lives in one place (the source library), but is visible to Claude Code
 For Claude Code marketplace plugins, csm provides a **unified view** of all installed plugins across all your projects and scopes (user/project). Install and uninstall operations are delegated to the `claude plugin` CLI. The toggle operates at the **plugin level** (not individual skills), since Claude Code installs entire plugins.
 
 Plugins that contain no skills (e.g. hook-only or agent-only plugins) are also shown — csm reads `plugin.json` metadata to display their name and description.
+
+In the TUI, plugins show their install scope with visual indicators:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `●` green | Installed directly in the selected target (toggleable) |
+| `●` blue + "via user scope" | Inherited from user scope (toggleable to add project scope) |
+| `●` green + `[user+project]` | Installed in both scopes (toggleable for project scope) |
+| `○` dim | Not installed (toggleable to install) |
+| `[user]` / `[project]` / `[user+project]` | Scope badge in normal mode (not target-specific) |
 
 ### Orphans
 

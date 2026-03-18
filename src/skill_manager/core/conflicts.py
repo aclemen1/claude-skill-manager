@@ -132,6 +132,36 @@ def detect_diagnostics(
                 severity=ConflictSeverity.WARNING,
             ))
 
+    # Scope overlap: plugin installed in user scope AND project scope
+    _plugin_by_id: dict[str, set[str]] = defaultdict(set)  # plugin_id → {target, ...}
+    _plugin_installs: dict[str, list[Install]] = defaultdict(list)
+    for inst in installs:
+        if inst.method != InstallMethod.PLUGIN or not inst.source:
+            continue
+        src = inst.source
+        if not src.startswith("plugin:"):
+            continue
+        after = src[7:]
+        plugin_id = after.split("#")[0].rsplit(":", 1)[0]  # name@marketplace
+        _plugin_by_id[plugin_id].add(inst.target)
+        _plugin_installs[plugin_id].append(inst)
+
+    for plugin_id, targets_set in _plugin_by_id.items():
+        if "user" not in targets_set or len(targets_set) < 2:
+            continue
+        project_targets = sorted(targets_set - {"user"})
+        key = ("scope-overlap", plugin_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        diagnostics.append(Conflict(
+            name=plugin_id,
+            target=", ".join(project_targets),
+            items=[f"user"] + project_targets,
+            conflict_type="scope-overlap",
+            severity=ConflictSeverity.INFO,
+        ))
+
     return diagnostics
 
 
