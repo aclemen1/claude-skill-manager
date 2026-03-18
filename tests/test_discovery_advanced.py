@@ -12,8 +12,9 @@ from skill_manager.core.discovery import (
     auto_discover_source_paths,
     auto_discover_target_paths,
     invalidate_cache,
+    _scan_plugin,
 )
-from skill_manager.models import SmConfig
+from skill_manager.models import ItemType, SmConfig
 
 
 @pytest.fixture(autouse=True)
@@ -209,5 +210,80 @@ def test_resolve_glob_nested_pattern(tmp_path):
     assert "proj-a" in names
     assert "proj-b" in names
     assert "proj-c" not in names
+
+
+# ── Plugin scanning ────────────────────────────────────────────
+
+
+def test_scan_plugin_with_skills(tmp_path):
+    """Plugin with skills/ returns skill items."""
+    skill = tmp_path / "skills" / "my-skill"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: my-skill\ndescription: A skill\n---\n")
+
+    items = _scan_plugin("plugin:test@mp", tmp_path)
+    assert len(items) == 1
+    assert items[0].name == "my-skill"
+    assert items[0].item_type == ItemType.SKILL
+
+
+def test_scan_plugin_without_skills_reads_plugin_json(tmp_path):
+    """Plugin without skills/ still returns one PLUGIN item from plugin.json."""
+    import json
+    (tmp_path / "plugin.json").write_text(json.dumps({
+        "name": "my-hooks",
+        "description": "Hook-only plugin",
+    }))
+    (tmp_path / "hooks").mkdir()
+
+    items = _scan_plugin("plugin:my-hooks@mp", tmp_path)
+    assert len(items) == 1
+    assert items[0].name == "my-hooks"
+    assert items[0].item_type == ItemType.PLUGIN
+    assert items[0].description == "Hook-only plugin"
+
+
+def test_scan_plugin_without_skills_no_manifest(tmp_path):
+    """Plugin without skills/ and no plugin.json uses directory name."""
+    items = _scan_plugin("plugin:bare@mp", tmp_path)
+    assert len(items) == 1
+    assert items[0].name == tmp_path.name
+    assert items[0].item_type == ItemType.PLUGIN
+
+
+def test_scan_plugin_without_skills_has_plugin_name(tmp_path):
+    """Plugin without skills/ sets plugin_name for TUI grouping."""
+    import json
+    (tmp_path / "plugin.json").write_text(json.dumps({
+        "name": "my-hooks",
+        "description": "Hook-only",
+    }))
+    items = _scan_plugin("plugin:my-hooks@mp", tmp_path)
+    assert items[0].plugin_name == "my-hooks"
+
+
+def test_scan_plugin_with_skills_does_not_create_plugin_item(tmp_path):
+    """Plugin with skills/ should NOT also create a PLUGIN fallback item."""
+    skill = tmp_path / "skills" / "s1"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: s1\n---\n")
+
+    items = _scan_plugin("plugin:test@mp", tmp_path)
+    assert all(i.item_type == ItemType.SKILL for i in items)
+
+
+def test_scan_plugin_reads_dot_claude_plugin_dir(tmp_path):
+    """Plugin with .claude-plugin/plugin.json (alternative layout)."""
+    import json
+    meta_dir = tmp_path / ".claude-plugin"
+    meta_dir.mkdir()
+    (meta_dir / "plugin.json").write_text(json.dumps({
+        "name": "alt-plugin",
+        "description": "Alternative layout",
+    }))
+    items = _scan_plugin("plugin:alt@mp", tmp_path)
+    assert len(items) == 1
+    assert items[0].name == "alt-plugin"
+    assert items[0].description == "Alternative layout"
 
 

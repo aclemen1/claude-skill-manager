@@ -1,6 +1,6 @@
 [project]
 name = "claude-skill-manager"
-version = "1.4.1"
+version = "1.5.0"
 description = "Manage Claude Code skills from multiple sources with symlink-based deployment"
 readme = "README.md"
 license = "MIT"

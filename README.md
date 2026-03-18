@@ -288,6 +288,8 @@ The skill lives in one place (the source library), but is visible to Claude Code
 
 For Claude Code marketplace plugins, csm provides a **unified view** of all installed plugins across all your projects and scopes (user/project). Install and uninstall operations are delegated to the `claude plugin` CLI. The toggle operates at the **plugin level** (not individual skills), since Claude Code installs entire plugins.
 
+Plugins that contain no skills (e.g. hook-only or agent-only plugins) are also shown — csm reads `plugin.json` metadata to display their name and description.
+
 ### Orphans
 
 Skills found in `.claude/skills/` that are neither symlinks to known sources nor installed via plugins are flagged as **orphans** (shown with `?` in the TUI). These are typically skills that were copied or created manually.

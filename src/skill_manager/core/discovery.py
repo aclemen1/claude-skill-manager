@@ -64,36 +64,65 @@ def _scan_skills(source_name: str, base_path: Path, recursive: bool) -> list[Dis
     return items
 
 
+def _read_plugin_json(install_path: Path) -> dict:
+    """Read plugin.json metadata from a plugin's install directory."""
+    for candidate in (install_path / ".claude-plugin" / "plugin.json", install_path / "plugin.json"):
+        if candidate.exists():
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+    return {}
+
+
 def _scan_plugin(
     source_name: str, install_path: Path,
     scope: str = "", version: str = "", project_path: str = "",
 ) -> list[DiscoveredItem]:
     items: list[DiscoveredItem] = []
-    skills_dir = install_path / "skills"
-    if not skills_dir.exists():
-        return items
-
-    # Derive project name from projectPath
     project_name = Path(project_path).name if project_path else ""
 
-    for skill_dir in sorted(skills_dir.iterdir()):
-        skill_md = skill_dir / "SKILL.md"
-        if not skill_md.exists():
-            continue
-        meta, body = _parse_frontmatter(skill_md)
+    skills_dir = install_path / "skills"
+    if skills_dir.exists():
+        for skill_dir in sorted(skills_dir.iterdir()):
+            skill_md = skill_dir / "SKILL.md"
+            if not skill_md.exists():
+                continue
+            meta, body = _parse_frontmatter(skill_md)
+            items.append(
+                DiscoveredItem(
+                    name=meta.get("name", skill_dir.name),
+                    source_name=source_name,
+                    item_type=ItemType.SKILL,
+                    path=skill_dir,
+                    description=meta.get("description", ""),
+                    frontmatter=meta,
+                    plugin_scope=scope,
+                    plugin_version=version,
+                    plugin_project=project_name,
+                )
+            )
+
+    # If no skills found, represent the plugin itself as an item
+    # so that hook-only or agent-only plugins remain visible.
+    if not items:
+        meta = _read_plugin_json(install_path)
+        plugin_name = meta.get("name", install_path.name)
         items.append(
             DiscoveredItem(
-                name=meta.get("name", skill_dir.name),
+                name=plugin_name,
                 source_name=source_name,
-                item_type=ItemType.SKILL,
-                path=skill_dir,
+                item_type=ItemType.PLUGIN,
+                path=install_path,
                 description=meta.get("description", ""),
                 frontmatter=meta,
                 plugin_scope=scope,
                 plugin_version=version,
                 plugin_project=project_name,
+                plugin_name=plugin_name,
             )
         )
+
     return items
 
 

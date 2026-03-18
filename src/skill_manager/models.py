@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 class ItemType(StrEnum):
     SKILL = "skill"
+    PLUGIN = "plugin"  # plugin with no skills (hooks, agents, or config only)
 
 
 class SourceType(StrEnum):

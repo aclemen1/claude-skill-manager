@@ -272,14 +272,19 @@ class SourcePanel(Static):
             parent.add_leaf(f"{icon} {sel}{item.name}{sel_end}{tok_str}{mark}", data=("toggle", item, is_i, target))
 
     def _plugin_node(self, parent, plugin_name, marketplace_name, plugin_items, hl,
-                     toggle_target=None, pending=None, installed_qnames=None, expand=False):
+                     toggle_target=None, pending=None, installed_qnames=None,
+                     installed_names=None, expand=False):
         """Render a plugin node with icon at plugin level, skills as info children.
 
         Works for both normal mode (toggle_target=None) and toggle mode.
         """
+        installed_names = installed_names or set()
         if toggle_target and installed_qnames is not None:
-            # Toggle mode: is_installed based on qnames
-            is_installed = any(i.qualified_name in installed_qnames for i in plugin_items)
+            # Toggle mode: is_installed based on qnames or name match (handles version mismatch)
+            is_installed = any(
+                i.qualified_name in installed_qnames or i.name in installed_names
+                for i in plugin_items
+            )
 
             # Find qname for toggle action
             plugin_qname = ""
@@ -378,6 +383,7 @@ class SourcePanel(Static):
                 self._plugin_node(mp_nd, pn, mn, pi, hl,
                                   toggle_target=toggle_target, pending=pending,
                                   installed_qnames=hl if toggle_target else None,
+                                  installed_names=installed_names if toggle_target else None,
                                   expand=should_open)
 
     # ── Events ────────────────────────────────────────────────
