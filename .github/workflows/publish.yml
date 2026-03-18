@@ -25,3 +25,81 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv build
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  update-homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for PyPI to index the new version
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          for i in $(seq 1 30); do
+            URL=$(curl -s "https://pypi.org/pypi/claude-skill-manager/${VERSION}/json" \
+              | jq -r '.urls[] | select(.packagetype == "sdist") | .url' 2>/dev/null)
+            if [ -n "$URL" ] && [ "$URL" != "null" ]; then
+              echo "Found: $URL"
+              break
+            fi
+            echo "Waiting for PyPI... ($i/30)"
+            sleep 10
+          done
+
+      - name: Get tarball URL and SHA256
+        id: pypi
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          JSON=$(curl -s "https://pypi.org/pypi/claude-skill-manager/${VERSION}/json")
+          URL=$(echo "$JSON" | jq -r '.urls[] | select(.packagetype == "sdist") | .url')
+          SHA=$(echo "$JSON" | jq -r '.urls[] | select(.packagetype == "sdist") | .digests.sha256')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: aclemen1/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          URL="${{ steps.pypi.outputs.url }}"
+          SHA="${{ steps.pypi.outputs.sha256 }}"
+
+          cat > Formula/claude-skill-manager.rb << EOF
+          class ClaudeSkillManager < Formula
+            desc "Manage Claude Code skills across projects — CLI + TUI"
+            homepage "https://github.com/aclemen1/claude-skill-manager"
+            url "${URL}"
+            sha256 "${SHA}"
+            license "MIT"
+
+            depends_on "python@3.12"
+
+            def install
+              python3 = "python3.12"
+              venv = libexec
+              system python3, "-m", "venv", "--without-pip", venv
+              system venv/"bin/python", "-m", "ensurepip", "--default-pip"
+              system venv/"bin/pip", "install", "--no-cache-dir", "."
+              bin.install_symlink Dir[venv/"bin/csm"]
+            end
+
+            test do
+              assert_match "csm", shell_output("#{bin}/csm schema")
+            end
+          end
+          EOF
+
+      - name: Commit and push
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-skill-manager.rb
+          git commit -m "bump claude-skill-manager to ${VERSION}"
+          git push
