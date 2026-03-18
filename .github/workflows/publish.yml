@@ -103,3 +103,54 @@ jobs:
           git add Formula/claude-skill-manager.rb
           git commit -m "bump claude-skill-manager to ${VERSION}"
           git push
+
+  build-bottle:
+    needs: update-homebrew
+    runs-on: macos-14
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Tap and build bottle
+        run: |
+          brew tap aclemen1/tap
+          brew install --build-bottle aclemen1/tap/claude-skill-manager
+
+      - name: Generate bottle
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v${VERSION}"
+          ROOT_URL="https://github.com/aclemen1/homebrew-tap/releases/download/${TAG}"
+          mkdir -p /tmp/bottles && cd /tmp/bottles
+          brew bottle --json --root-url="$ROOT_URL" aclemen1/tap/claude-skill-manager
+
+      - name: Upload bottle and update formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="v${VERSION}"
+          cd /tmp/bottles
+
+          BOTTLE=$(ls *.tar.gz | head -1)
+
+          # Create release on homebrew-tap and upload bottle
+          gh release create "$TAG" "$BOTTLE" \
+            --repo aclemen1/homebrew-tap \
+            --title "claude-skill-manager ${TAG}" \
+            --notes "Bottle for claude-skill-manager ${VERSION}" \
+            || gh release upload "$TAG" "$BOTTLE" --repo aclemen1/homebrew-tap --clobber
+
+          # Merge bottle checksums into formula
+          brew bottle --merge --write --no-commit *.json
+
+          # Push updated formula
+          TAP_DIR="$(brew --repo aclemen1/tap)"
+          cd "$TAP_DIR"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/aclemen1/homebrew-tap.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-skill-manager.rb
+          git commit -m "add arm64_sonoma bottle for claude-skill-manager ${VERSION}"
+          git push
