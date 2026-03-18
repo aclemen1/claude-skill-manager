@@ -108,7 +108,7 @@ csm list             # unified inventory with install state
 # 4. Install a skill
 csm install my-skill --to my-project
 
-# 5. Or use the interactive TUI (or just: csm)
+# 5. Or use the interactive TUI
 csm
 ```
 

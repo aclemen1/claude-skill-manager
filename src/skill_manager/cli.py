@@ -1,7 +1,4 @@
-"""CLI entry point for claude-skill-manager.
-
-Core model:  S (sources) × T (targets) → installs
-"""
+"""CLI entry point for claude-skill-manager."""
 
 from __future__ import annotations
 
@@ -33,12 +30,11 @@ app = typer.Typer(
     name="csm",
     help=(
         "Claude Skill Manager (csm) — manage Claude Code skills across projects.\n\n"
-        "Core model: S (sources) × T (targets) → installs.\n\n"
         "Sources are directories containing SKILL.md files "
         "or Claude Code marketplace plugins. "
         "Targets are projects with a .claude/ directory. "
         "Installs are symlinks (managed by csm) or plugins (managed by Claude Code). "
-        "Config file: ~/.config/claude-skill-manager/csm.toml (glob patterns for paths).\n\n"
+        "Config: ~/.config/claude-skill-manager/csm.toml\n\n"
         "Use --json on any command for machine-readable output. "
         "Use 'csm schema' for full LLM/agent documentation."
     ),
@@ -50,10 +46,18 @@ console = Console()
 _json_output = False
 
 
+def _version_callback(value: bool):
+    if value:
+        import importlib.metadata
+        print(importlib.metadata.version("claude-skill-manager"))
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
 def _global_options(
     ctx: typer.Context,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON (machine-readable)")] = False,
+    version: Annotated[bool, typer.Option("--version", "-V", help="Show version and exit", callback=_version_callback, is_eager=True)] = False,
 ):
     global _json_output
     _json_output = json_output
@@ -261,7 +265,7 @@ def installs():
         console.print_json(json_mod.dumps(data))
         return
 
-    table = Table(title="Installs (S × T)", box=box.ROUNDED)
+    table = Table(title="Installs", box=box.ROUNDED)
     table.add_column("", width=3)
     table.add_column("Method", width=6)
     table.add_column("Source (s)", style="bold")
