@@ -318,6 +318,35 @@ def uninstall_symlink(name: str, target_cfg: TargetConfig) -> tuple[bool, str]:
     return False, f"'{name}' is not a symlink"
 
 
+def adopt_orphan(orphan_path: Path, destination_source_dir: Path) -> tuple[bool, str]:
+    """Move an orphan skill directory to a source library and symlink back.
+
+    orphan_path: real directory in .claude/skills/ (not a symlink)
+    destination_source_dir: target source library path
+    """
+    import shutil
+
+    if not orphan_path.is_dir() or orphan_path.is_symlink():
+        return False, f"'{orphan_path.name}' is not a plain directory"
+
+    dest = destination_source_dir / orphan_path.name
+    if dest.exists():
+        home = str(Path.home())
+        dest_str = str(destination_source_dir)
+        short = f"~{dest_str[len(home):]}" if dest_str.startswith(home) else dest_str
+        return False, f"'{orphan_path.name}' already exists in {short}"
+
+    destination_source_dir.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(orphan_path), str(dest))
+    orphan_path.symlink_to(dest)
+    invalidate_installs_cache()
+
+    home = str(Path.home())
+    dest_str = str(dest)
+    short = f"~{dest_str[len(home):]}" if dest_str.startswith(home) else dest_str
+    return True, f"{orphan_path.name} → {short}"
+
+
 # ── Claude Code plugin install/uninstall ──────────────────────
 
 

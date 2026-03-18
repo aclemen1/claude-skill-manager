@@ -92,11 +92,12 @@ source_paths = ["~/code/my-org/*", "~/skills-library"]
 target_paths = ["~", "~/code/my-org/*"]
 ```
 
-Paths support glob patterns:
-- `~` — exact (home directory only)
-- `~/code/*` — direct children
-- `~/vaults/**` — recursive
-- `~/code/*/backend` — pattern matching
+Paths support glob patterns. For `source_paths`, the wildcard marks where skill directories are expected:
+- `~/skills-library` — exact path; skills are direct subdirs (`~/skills-library/my-skill/SKILL.md`)
+- `~/code/my-org/*` — each matched dir may be a skill; source root = parent (`~/code/my-org`)
+- `~/code/my-org/*/*` — two levels deep; source root = one level up from the match
+
+For `target_paths`, each resolved directory is checked for a `.claude/` subdirectory.
 
 ```bash
 # 3. Explore what's available
@@ -121,6 +122,7 @@ csm
 | `csm installs` | List all current installs (symlinks, plugins, orphans) |
 | `csm install SKILL --to TARGET` | Install a local skill into a target via symlink |
 | `csm uninstall TARGET` | Remove skill symlinks from a target |
+| `csm adopt SKILL --from TARGET --to SOURCE` | Adopt an orphan: move it into a source library and replace it with a symlink |
 | `csm list` | Unified inventory with install state per item |
 | `csm diagnostics` | Detect per-target name collisions and issues |
 | `csm updates` | Detect stale plugin cache |
@@ -187,6 +189,7 @@ The `schema` command outputs a structured JSON document with all commands, conce
 
 | Key | Action |
 |-----|--------|
+| `A` | Adopt orphan (move it into a source library, replace with symlink) |
 | `s` | Settings editor |
 | `D` | Diagnostics (conflicts + stale cache) |
 | `?` | Help |
@@ -216,8 +219,15 @@ Config file: `~/.config/claude-skill-manager/csm.toml`
 # Enable Claude Code marketplace plugin discovery (default: true)
 plugins = true
 
-# Glob patterns for skill source directories
-# Each resolved directory is scanned for */SKILL.md
+# Glob patterns for skill source directories.
+# Semantics depend on whether the pattern contains a glob wildcard:
+#   - Exact path "~/skills-library": the directory itself is the source root;
+#     skills are its direct subdirectories (~/skills-library/my-skill/SKILL.md).
+#   - Glob "~/code/my-org/*": each matched directory may be a skill;
+#     csm checks for SKILL.md directly inside it, and the source root is its
+#     parent (~/code/my-org/my-skill/SKILL.md → source = ~/code/my-org).
+#   - Glob "~/code/my-org/*/*": same, two levels deep
+#     (~/code/my-org/lib/my-skill/SKILL.md → source = ~/code/my-org/lib).
 source_paths = [
     "~/skills-library",
     "~/code/my-org/*",
@@ -273,7 +283,9 @@ For Claude Code marketplace plugins, csm provides a **unified view** of all inst
 
 ### Orphans
 
-Skills found in `.claude/skills/` that are neither symlinks to known sources nor installed via plugins are flagged as **orphans** (shown with `?` in the TUI). These are typically skills that were copied manually. csm shows them for awareness but doesn't manage them.
+Skills found in `.claude/skills/` that are neither symlinks to known sources nor installed via plugins are flagged as **orphans** (shown with `?` in the TUI). These are typically skills that were copied or created manually.
+
+You can **adopt** an orphan to bring it under csm management: adoption moves the skill directory into a configured source library and replaces it with a symlink, so it becomes a proper managed skill. Use `csm adopt` from the CLI or press `A` on an orphan node in the TUI.
 
 ## Development
 

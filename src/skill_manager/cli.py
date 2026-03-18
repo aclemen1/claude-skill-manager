@@ -17,6 +17,7 @@ from rich import box
 from skill_manager.core.config import load_config, save_config, ensure_config_dir
 from skill_manager.core.discovery import (
     discover_all, resolve_all_sources, resolve_all_targets,
+    resolve_adoption_destinations,
 )
 from skill_manager.core.deployer import (
     all_installs, check_status, get_install_state,
@@ -24,7 +25,7 @@ from skill_manager.core.deployer import (
     install_symlink, uninstall_symlink,
     cc_plugin_install, cc_plugin_uninstall,
 )
-from skill_manager.models import InstallMethod, InstallState, TargetConfig
+from skill_manager.models import InstallMethod, InstallState, SourceType, TargetConfig
 from skill_manager.core.inventory import is_plugin_source
 from skill_manager.core.conflicts import detect_conflicts
 
@@ -515,6 +516,105 @@ def updates():
             console.print(f"  {icon} {msg}")
 
 
+# ── adopt ─────────────────────────────────────────────────────
+
+
+@app.command()
+def adopt(
+    orphan: Annotated[str, typer.Argument(help="Orphan skill name to adopt")],
+    frm: Annotated[str, typer.Option("--from", "-f", help="Target name where the orphan lives")],
+    to: Annotated[Optional[str], typer.Option("--to", "-t", help="Source library name to move the orphan into")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", "-n")] = False,
+):
+    """Adopt an orphan skill: move it to a source library and create a symlink back.
+
+    The orphan directory is moved into the source library, then a symlink is created
+    at the original location pointing to its new home in the source.
+    """
+    config = load_config()
+    all_targets = resolve_all_targets(config)
+    all_sources = resolve_all_sources(config)
+
+    # Validate target
+    target_cfg = _get_target_config(config, all_targets, frm)
+
+    # Guard: user scope is managed by Claude Code — orphans cannot exist there
+    if target_cfg and target_cfg.path:
+        project_dir = (
+            target_cfg.path.parent.parent
+            if target_cfg.path.name == "skills" and target_cfg.path.parent.name == ".claude"
+            else target_cfg.path.parent
+        )
+        try:
+            if project_dir.resolve() == Path.home().resolve():
+                _error(
+                    "User scope is managed by Claude Code and cannot contain orphans. "
+                    "Specify a project target with --from.",
+                    reason="invalidOperation",
+                )
+        except OSError:
+            pass
+
+    orphan_path = target_cfg.path / orphan
+
+    if not orphan_path.exists():
+        _error(f"'{orphan}' not found in target '{frm}'.", reason="notFound")
+    if orphan_path.is_symlink():
+        _error(f"'{orphan}' is a symlink, not an orphan directory.", reason="invalidOperation")
+
+    # If --to not given, list available sources and abort
+    skill_sources = resolve_adoption_destinations(config.source_paths)
+    if to is None:
+        if _json_output:
+            import json as json_mod
+            console.print_json(json_mod.dumps({"available_sources": list(skill_sources.keys())}))
+        else:
+            console.print("[yellow]Specify --to SOURCE. Available local skill sources:[/yellow]")
+            home = str(Path.home())
+            for name, cfg in sorted(skill_sources.items()):
+                path_str = str(cfg.path)
+                short = f"~{path_str[len(home):]}" if path_str.startswith(home) else path_str
+                console.print(f"  [cyan]{name}[/cyan]  [dim]{short}[/dim]")
+        raise typer.Exit(1)
+
+    if to not in skill_sources:
+        _error(
+            f"Source '{to}' not found in configured source_paths. "
+            "Only local skill sources managed by csm are valid adoption destinations.",
+            reason="notFound",
+        )
+
+    src_cfg = skill_sources[to]
+    dest = src_cfg.path / orphan
+
+    home = str(Path.home())
+    orphan_short = str(orphan_path)
+    dest_short = str(dest)
+    if orphan_short.startswith(home):
+        orphan_short = f"~{orphan_short[len(home):]}"
+    if dest_short.startswith(home):
+        dest_short = f"~{dest_short[len(home):]}"
+
+    console.print(f"[bold]Adopt orphan:[/bold] [dark_orange]{orphan}[/dark_orange]")
+    console.print(f"  [dim]move[/dim]  {orphan_short}")
+    console.print(f"        → {dest_short}")
+    console.print(f"  [dim]link[/dim]  {orphan_short} → {dest_short}")
+
+    if dry_run:
+        console.print("\n[dim]Dry run — no changes made.[/dim]")
+        raise typer.Exit()
+
+    if not typer.confirm("Proceed?"):
+        raise typer.Abort()
+
+    from skill_manager.core.deployer import adopt_orphan
+    ok, msg = adopt_orphan(orphan_path, src_cfg.path)
+    icon = "[green]✓[/green]" if ok else "[red]✗[/red]"
+    console.print(f"  {icon} {msg}")
+    if not ok:
+        raise typer.Exit(1)
+
+
 # ── tui ───────────────────────────────────────────────────────
 
 
@@ -629,6 +729,18 @@ def schema():
                 "examples": ["csm uninstall user", "csm uninstall GEMM"],
             },
             {
+                "name": "adopt", "usage": "csm adopt ORPHAN_NAME --from TARGET --to SOURCE [--dry-run]",
+                "description": (
+                    "Adopt an orphan skill: move the directory from .claude/skills/ into a source library, "
+                    "then create a symlink at the original location. "
+                    "Omit --to to list available sources."
+                ),
+                "examples": [
+                    "csm adopt my-skill --from myproj --to auto:skills",
+                    "csm adopt my-skill --from myproj --to auto:skills --dry-run",
+                ],
+            },
+            {
                 "name": "list", "usage": "csm list [--source NAME] [--no-plugins] [--json]",
                 "description": "Unified inventory with install state (installed/available/broken) per item.",
                 "examples": ["csm list", "csm list --no-plugins", "csm --json list"],
@@ -669,7 +781,7 @@ def schema():
         "tui_keybindings": {
             "navigation": {"j/k": "Move down/up", "Enter": "Expand/collapse (fold)", "l": "Expand", "h": "Collapse or parent", "L": "Expand all", "H": "Collapse all"},
             "selection": {"Space": "Select (switch to toggle mode on other panel)", "Tab/Shift+Tab": "Cycle panels"},
-            "install": {"x": "Toggle install/uninstall"},
+            "install": {"x": "Toggle install/uninstall", "A": "Adopt orphan (move to source library)"},
             "actions": {"a": "Apply pending changes", "d": "Delete pending change", "Esc": "Cancel all pending", "r": "Refresh", "q": "Quit"},
             "modals": {"s": "Settings", "D": "Diagnostics", "?": "Help"},
         },

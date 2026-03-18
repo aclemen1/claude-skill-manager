@@ -36,6 +36,7 @@ class _NavTree(Tree):
         Binding("x", "noop", "Toggle", show=True),
         Binding("l", "noop", "Expand", show=True),
         Binding("h", "noop", "Collapse", show=True),
+        Binding("A", "noop", "Adopt", show=True),
     ]
 
     def action_noop(self) -> None:
@@ -55,6 +56,13 @@ class TargetPanel(Static):
             self.source_name = source_name
             self.target = target
             self.currently_installed = currently_installed
+
+    class AdoptOrphan(Message):
+        def __init__(self, orphan_name: str, orphan_path: Path, target: str) -> None:
+            super().__init__()
+            self.orphan_name = orphan_name
+            self.orphan_path = orphan_path
+            self.target = target
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -323,7 +331,12 @@ class TargetPanel(Static):
         if orphans:
             node = parent.add(label, data=("target", name), expand=False)
             for o in sorted(orphans, key=lambda i: i.name):
-                node.add_leaf(f"[dark_orange]? {o.name}[/dark_orange]")
+                is_dir_orphan = o.symlink == Path()
+                adopt_hint = " [dim]A=adopt[/dim]" if is_dir_orphan else ""
+                node.add_leaf(
+                    f"[dark_orange]? {o.name}[/dark_orange]{adopt_hint}",
+                    data=("orphan", o.name, o.origin, o.symlink, name),
+                )
         else:
             prefix = "  " if pad else ""
             parent.add_leaf(f"{prefix}{label}", data=("target", name))
@@ -481,6 +494,17 @@ class TargetPanel(Static):
 
     def on_key(self, event) -> None:
         tree = self.query_one("#tgt-tree", Tree)
+
+        # A → adopt orphan (only on real-directory orphan nodes)
+        if event.key == "A":
+            node = tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "orphan":
+                _, name, origin, symlink, target = node.data
+                if symlink == Path():  # real directory, not a broken symlink
+                    event.prevent_default()
+                    event.stop()
+                    self.post_message(self.AdoptOrphan(name, origin, target))
+                    return
 
         # x → toggle install/uninstall (toggle mode only)
         if event.key == "x":

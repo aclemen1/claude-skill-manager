@@ -689,3 +689,167 @@ def _walk_tree(node):
     yield node
     for child in node.children:
         yield from _walk_tree(child)
+
+
+# ── Orphan adoption (TUI) ────────────────────────────────────
+
+
+async def _nav_to_orphan_child(pilot, tgt_tree):
+    """Navigate to a real-dir orphan leaf node in the target tree.
+
+    Returns True if found, False otherwise.
+    """
+    for _ in range(20):
+        node = tgt_tree.cursor_node
+        if node and isinstance(node.data, tuple) and node.data[0] == "orphan":
+            from pathlib import Path
+            _, name, origin, symlink, target = node.data
+            if symlink == Path():  # real dir orphan
+                return True
+        await pilot.press("j")
+    return False
+
+
+@pytest.mark.asyncio
+async def test_adopt_key_opens_modal(tui_env_with_orphans):
+    """Pressing A on an orphan node opens the AdoptScreen modal."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Go to target tree
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+
+        # Find and expand the myproj node
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "myproj":
+                break
+            await pilot.press("j")
+
+        await pilot.press("l")  # expand to reveal orphan children
+        await pilot.press("j")  # move to first orphan child
+
+        assert await _nav_to_orphan_child(pilot, tgt_tree)
+
+        await pilot.press("A")
+        await pilot.pause()
+
+        # AdoptScreen should be pushed
+        assert len(app.screen_stack) > 1
+
+
+@pytest.mark.asyncio
+async def test_adopt_modal_cancel_leaves_filesystem_unchanged(tui_env_with_orphans):
+    """Pressing Esc in AdoptScreen cancels without moving anything."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    orphan_path = tui_env_with_orphans / "projects" / "myproj" / ".claude" / "skills" / "orphan-x"
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "myproj":
+                break
+            await pilot.press("j")
+
+        await pilot.press("l")
+        await pilot.press("j")
+        assert await _nav_to_orphan_child(pilot, tgt_tree)
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert len(app.screen_stack) > 1
+
+        # Cancel
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+
+        # Orphan should still be a plain directory
+        assert orphan_path.is_dir()
+        assert not orphan_path.is_symlink()
+
+
+@pytest.mark.asyncio
+async def test_adopt_modal_confirm_moves_orphan(tui_env_with_orphans):
+    """Pressing Enter in AdoptScreen moves the orphan and creates a symlink."""
+    from skill_manager.tui.app import SkillManagerApp
+    from textual.widgets import ListView
+    app = SkillManagerApp()
+    skills_source = tui_env_with_orphans / "skills"
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target" and node.data[1] == "myproj":
+                break
+            await pilot.press("j")
+
+        await pilot.press("l")
+        await pilot.press("j")
+        assert await _nav_to_orphan_child(pilot, tgt_tree)
+
+        # Capture which orphan we're about to adopt
+        node = tgt_tree.cursor_node
+        orphan_name = node.data[1]
+        orphan_origin = node.data[2]
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert len(app.screen_stack) > 1
+
+        # Confirm adoption (Enter selects the first source in the list)
+        await pilot.press("enter")
+        await pilot.pause()
+        await asyncio.sleep(0.1)
+
+        # Modal should be dismissed
+        assert len(app.screen_stack) == 1
+
+        # The orphan_origin should now be a symlink
+        assert orphan_origin.is_symlink(), f"{orphan_origin} should be a symlink after adoption"
+        # And the destination in the source lib should exist
+        dest = skills_source / orphan_name
+        assert dest.is_dir(), f"{dest} should exist in source lib after adoption"
+
+
+@pytest.mark.asyncio
+async def test_a_key_ignored_on_non_orphan_nodes(tui_env_with_orphans):
+    """Pressing A on a non-orphan node does not open any modal."""
+    from skill_manager.tui.app import SkillManagerApp
+    app = SkillManagerApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await asyncio.sleep(0.5)
+
+        # Press A while focused on source tree (no orphan selected)
+        await pilot.press("A")
+        await pilot.pause()
+
+        # No modal should open
+        assert len(app.screen_stack) == 1
+
+        # Press A on a target node (not an orphan leaf)
+        await pilot.press("tab")
+        tgt_tree = app.query_one("#tgt-tree")
+        for _ in range(15):
+            node = tgt_tree.cursor_node
+            if node and isinstance(node.data, tuple) and node.data[0] == "target":
+                break
+            await pilot.press("j")
+
+        await pilot.press("A")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1

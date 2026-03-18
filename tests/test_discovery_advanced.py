@@ -86,16 +86,34 @@ def test_discover_skills(skill_tree):
 
 
 def test_source_glob_star(tmp_path):
-    """source_paths with * resolves to multiple directories."""
+    """Glob pattern */* — each matched dir is a skill, source root is its parent.
+
+    With pattern tmp_path/*/* the resolved dirs are lib-a/s1, lib-a/s2, etc.
+    Each contains SKILL.md, so lib-a and lib-b are discovered as source roots.
+    """
     for lib in ("lib-a", "lib-b"):
         for skill in ("s1", "s2"):
             d = tmp_path / lib / skill
             d.mkdir(parents=True)
             (d / "SKILL.md").write_text(f"---\nname: {skill}\n---\n")
 
-    sources = auto_discover_source_paths([str(tmp_path / "*")])
-    # lib-a and lib-b each have skills
+    sources = auto_discover_source_paths([str(tmp_path / "*" / "*")])
+    # lib-a and lib-b are each discovered as a source root
     assert len(sources) >= 2
+
+
+def test_source_glob_single_star(tmp_path):
+    """Glob pattern * — each matched dir is itself a skill; source root is tmp_path."""
+    for skill in ("alpha", "beta"):
+        d = tmp_path / skill
+        d.mkdir()
+        (d / "SKILL.md").write_text(f"---\nname: {skill}\n---\n")
+
+    sources = auto_discover_source_paths([str(tmp_path / "*")])
+    # tmp_path is the single source root
+    assert len(sources) == 1
+    src = next(iter(sources.values()))
+    assert src.path == tmp_path
 
 
 def test_auto_discover_source_exact(tmp_path):

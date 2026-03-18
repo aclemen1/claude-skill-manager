@@ -318,10 +318,111 @@ _source_scan_cache: dict[str, dict[str, SourceConfig]] = {}
 _target_scan_cache: dict[str, dict[str, TargetConfig]] = {}
 
 
+def resolve_adoption_destinations(patterns: list[str]) -> dict[str, SourceConfig]:
+    """Resolve source_paths patterns to all potential adoption destinations.
+
+    A destination is a source root — the parent directory where skills live.
+    Mirrors the semantics of auto_discover_source_paths but includes dirs with
+    no skills yet:
+
+      - no-glob 'a'   → 'a' itself
+      - glob 'a/*'    → 'a' (parent of the glob results)
+      - glob 'a/*/*'  → every 'a/X' dir (parent of depth-2 results)
+      - '**' patterns → all dirs within depth 2 of the non-glob base
+
+    Directories whose name starts with '.' are excluded.
+    """
+    sources: dict[str, SourceConfig] = {}
+    home = Path.home()
+
+    def _add(p: Path) -> None:
+        if p.name.startswith("."):
+            return
+        try:
+            name = str(p.relative_to(home)).replace("/", ":")
+        except ValueError:
+            name = p.name
+        key = f"auto:{name}"
+        if key not in sources:
+            sources[key] = SourceConfig(path=p, type=SourceType.SKILL, recursive=False)
+
+    for pattern in patterns:
+        expanded = _expand(pattern)
+
+        if not _has_glob(expanded):
+            p = Path(expanded)
+            if p.is_dir():
+                _add(p)
+            continue
+
+        # Compute the non-glob base prefix
+        parts = list(Path(expanded).parts)
+        base_parts: list[str] = []
+        for part in parts:
+            if _has_glob(part):
+                break
+            base_parts.append(part)
+        base = Path(*base_parts) if base_parts else Path(".")
+
+        if "**" in expanded:
+            # Recursive glob: destinations are dirs within depth 2 of base
+            for scan_path in resolve_glob(pattern):
+                if scan_path.name.startswith("."):
+                    continue
+                try:
+                    if len(scan_path.relative_to(base).parts) > 2:
+                        continue
+                except ValueError:
+                    pass
+                _add(scan_path)
+            continue
+
+        # Non-recursive glob: destinations are the *parents* of the glob results,
+        # i.e., dirs matched by the pattern with its last glob segment removed.
+        # This naturally includes empty dirs (e.g. skills-library with no skills yet).
+        parent_parts = parts[:]
+        for i in range(len(parent_parts) - 1, -1, -1):
+            if _has_glob(parent_parts[i]):
+                parent_parts = parent_parts[:i]
+                break
+
+        if not parent_parts:
+            continue
+
+        parent_expanded = str(Path(*parent_parts))
+
+        if not _has_glob(parent_expanded):
+            # Parent is a plain path (e.g. a/* → parent = a)
+            p = Path(parent_expanded)
+            if p.is_dir():
+                _add(p)
+        else:
+            # Parent is still a glob (e.g. a/*/* → parent = a/*)
+            parent_base_parts: list[str] = []
+            for part in parent_parts:
+                if _has_glob(part):
+                    break
+                parent_base_parts.append(part)
+            parent_base = Path(*parent_base_parts) if parent_base_parts else Path(".")
+            parent_glob = str(Path(parent_expanded).relative_to(parent_base))
+            if parent_base.exists():
+                for p in sorted(parent_base.glob(parent_glob)):
+                    if p.is_dir() and not p.name.startswith("."):
+                        _add(p)
+
+    return dict(sorted(sources.items()))
+
+
 def auto_discover_source_paths(patterns: list[str]) -> dict[str, SourceConfig]:
     """Scan glob patterns for directories containing SKILL.md files.
 
-    Each resolved directory is scanned for */SKILL.md (direct children only).
+    Semantics:
+      - No-glob pattern 'a': 'a' is a source root; scan a/*/SKILL.md.
+      - Glob pattern 'a/*': each resolved dir may be a skill; check SKILL.md
+        directly inside it; the source root is its parent.
+      - Glob 'a/*/*': same — the resolved a/X/Y dirs may be skills, source = a/X.
+
+    In short, glob wildcards mark where skill directories are expected to live.
     """
     cache_key = "src|" + "|".join(patterns)
     if cache_key in _source_scan_cache:
@@ -329,29 +430,34 @@ def auto_discover_source_paths(patterns: list[str]) -> dict[str, SourceConfig]:
 
     sources: dict[str, SourceConfig] = {}
     seen_dirs: set[str] = set()
+    home = Path.home()
+
+    def _add_source(source_dir: Path) -> None:
+        key = str(source_dir.resolve())
+        if key in seen_dirs:
+            return
+        seen_dirs.add(key)
+        try:
+            name = str(source_dir.relative_to(home)).replace("/", ":")
+        except ValueError:
+            name = source_dir.name
+        sources[f"auto:{name}"] = SourceConfig(
+            path=source_dir, type=SourceType.SKILL, recursive=False,
+        )
 
     for pattern in patterns:
+        expanded = _expand(pattern)
+        has_glob = _has_glob(expanded)
         for scan_path in resolve_glob(pattern):
-            # Scan direct children for SKILL.md
-            for skill_md in sorted(scan_path.glob("*/SKILL.md")):
-                skill_dir = skill_md.parent
-                parent_key = str(skill_dir.resolve())
-                if parent_key in seen_dirs:
-                    continue
-                seen_dirs.add(parent_key)
-
-                # Name: relative to home for readability
-                parent_dir = skill_dir.parent
-                try:
-                    home = Path.home()
-                    rel = parent_dir.relative_to(home)
-                    name = str(rel).replace("/", ":")
-                except ValueError:
-                    name = parent_dir.name
-
-                sources[f"auto:{name}"] = SourceConfig(
-                    path=parent_dir, type=SourceType.SKILL, recursive=False,
-                )
+            if has_glob:
+                # The glob designates potential skill dirs; SKILL.md lives directly
+                # inside each resolved path, and the source root is its parent.
+                if (scan_path / "SKILL.md").exists():
+                    _add_source(scan_path.parent)
+            else:
+                # Exact path: it is the source root; skills are its subdirectories.
+                for skill_md in sorted(scan_path.glob("*/SKILL.md")):
+                    _add_source(skill_md.parent.parent)
 
     _source_scan_cache[cache_key] = sources
     return sources

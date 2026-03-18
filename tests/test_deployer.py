@@ -206,3 +206,118 @@ def test_resolve_plugin_ref_mp_wrong_format():
     """mp: source with wrong format (missing skill part) returns None."""
     ref = _resolve_plugin_ref("mp:only-marketplace")
     assert ref is None
+
+
+# ── adopt_orphan tests ────────────────────────────────────────
+
+
+from skill_manager.core.deployer import adopt_orphan
+
+
+def test_adopt_orphan_moves_and_creates_symlink(tmp_path):
+    """adopt_orphan moves the dir to the source lib and creates a symlink back."""
+    skills_dir = tmp_path / "target" / ".claude" / "skills"
+    skills_dir.mkdir(parents=True)
+    source_lib = tmp_path / "sources" / "mylib"
+    source_lib.mkdir(parents=True)
+
+    orphan = skills_dir / "my-orphan"
+    orphan.mkdir()
+    (orphan / "SKILL.md").write_text("---\nname: my-orphan\n---\n")
+
+    ok, msg = adopt_orphan(orphan, source_lib)
+
+    assert ok
+    assert "my-orphan" in msg
+    # Original location is now a symlink
+    assert orphan.is_symlink(), "original path should be a symlink after adoption"
+    # Destination exists in source lib
+    dest = source_lib / "my-orphan"
+    assert dest.is_dir()
+    assert (dest / "SKILL.md").exists()
+    # Symlink points to dest
+    assert orphan.resolve() == dest.resolve()
+
+
+def test_adopt_orphan_creates_source_dir_if_missing(tmp_path):
+    """adopt_orphan creates the destination source dir if it doesn't exist yet."""
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    source_lib = tmp_path / "new-source-lib"  # does not exist yet
+
+    orphan = skills_dir / "my-skill"
+    orphan.mkdir()
+    (orphan / "SKILL.md").write_text("---\nname: my-skill\n---\n")
+
+    ok, _ = adopt_orphan(orphan, source_lib)
+
+    assert ok
+    assert (source_lib / "my-skill").is_dir()
+
+
+def test_adopt_orphan_fails_if_already_exists_in_source(tmp_path):
+    """adopt_orphan returns False if the skill name already exists in the source."""
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    source_lib = tmp_path / "source"
+    source_lib.mkdir()
+
+    orphan = skills_dir / "my-skill"
+    orphan.mkdir()
+    (orphan / "SKILL.md").write_text("---\nname: my-skill\n---\n")
+
+    # Pre-existing in source
+    (source_lib / "my-skill").mkdir()
+
+    ok, msg = adopt_orphan(orphan, source_lib)
+
+    assert not ok
+    assert "already exists" in msg
+    # Original orphan should be untouched
+    assert orphan.is_dir()
+    assert not orphan.is_symlink()
+
+
+def test_adopt_orphan_fails_if_symlink(tmp_path):
+    """adopt_orphan refuses to adopt a symlink (only plain directories)."""
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    source_lib = tmp_path / "source"
+    source_lib.mkdir()
+
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    symlink = skills_dir / "my-skill"
+    symlink.symlink_to(real_dir)
+
+    ok, msg = adopt_orphan(symlink, source_lib)
+
+    assert not ok
+    assert "not a plain directory" in msg
+
+
+def test_adopt_orphan_invalidates_cache(tmp_path):
+    """adopt_orphan invalidates the installs cache."""
+    from skill_manager.core.deployer import all_installs, invalidate_installs_cache
+
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+    source_lib = tmp_path / "source"
+    source_lib.mkdir()
+
+    orphan = skills_dir / "orphan"
+    orphan.mkdir()
+    (orphan / "SKILL.md").write_text("---\nname: orphan\n---\n")
+
+    target_cfg = TargetConfig(path=skills_dir)
+    # Warm up the cache
+    all_installs({"t": target_cfg}, {}, [])
+
+    adopt_orphan(orphan, source_lib)
+
+    # After adoption, orphan is now a symlink — re-scan should see it as such
+    installs = scan_target_installs("t", target_cfg, {}, [])
+    # It's now a symlink pointing to an unregistered source → orphan-symlink or empty
+    assert len(installs) == 1
+    assert installs[0].method == InstallMethod.ORPHAN  # unknown source symlink
+    assert installs[0].symlink != Path()  # it IS a symlink now

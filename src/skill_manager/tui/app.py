@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header, Label, RichLog, DataTable, Tree
+from textual.widgets import Footer, Header, Label, RichLog, DataTable, Tree, ListView, ListItem
 from textual.screen import ModalScreen
 
 class _PendingTable(DataTable):
@@ -649,6 +649,31 @@ class SkillManagerApp(App):
         installs = all_installs(self.all_targets, self.all_sources, self.items)
         self.push_screen(ConflictsScreen(self.items, installs, self.all_targets))
 
+    # ── Orphan adoption ────────────────────────────────────────
+
+    def on_target_panel_adopt_orphan(self, event: TargetPanel.AdoptOrphan) -> None:
+        from skill_manager.core.discovery import resolve_adoption_destinations
+        skill_sources = resolve_adoption_destinations(self.config.source_paths)
+        if not skill_sources:
+            self.notify("No skill sources configured", severity="warning")
+            return
+        self.push_screen(
+            AdoptScreen(event.orphan_name, skill_sources),
+            callback=lambda dest: self._do_adopt(event.orphan_path, dest),
+        )
+
+    def _do_adopt(self, orphan_path, dest_source_dir) -> None:
+        if not dest_source_dir:
+            return
+        from pathlib import Path
+        from skill_manager.core.deployer import adopt_orphan
+        ok, msg = adopt_orphan(orphan_path, Path(dest_source_dir))
+        if ok:
+            self.notify(f"Adopted: {msg}")
+            self.refresh_data()
+        else:
+            self.notify(f"Failed: {msg}", severity="error")
+
 
 
 # ── Apply confirmation modal ──────────────────────────────────
@@ -704,3 +729,63 @@ class ApplyScreen(ModalScreen[bool | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+# ── Adopt orphan modal ────────────────────────────────────────
+
+
+class AdoptScreen(ModalScreen[str | None]):
+    CSS = """
+    AdoptScreen { align: center middle; }
+    #adopt-container {
+        width: 70; height: auto; max-height: 20;
+        background: $surface; border: round $warning; padding: 1 2;
+    }
+    #adopt-title { text-align: center; text-style: bold; margin-bottom: 1; }
+    #adopt-list { height: auto; max-height: 12; margin-bottom: 1; }
+    #adopt-buttons { height: 1; text-align: center; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("j", "cursor_down", show=False),
+        Binding("k", "cursor_up", show=False),
+    ]
+
+    def __init__(self, orphan_name: str, skill_sources: dict) -> None:
+        super().__init__()
+        self._orphan_name = orphan_name
+        home = str(__import__("pathlib").Path.home())
+        self._sources: list[tuple[str, str, str]] = []
+        for name, cfg in sorted(skill_sources.items()):
+            path_str = str(cfg.path)
+            short = f"~{path_str[len(home):]}" if path_str.startswith(home) else path_str
+            self._sources.append((name, short, str(cfg.path)))
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="adopt-container"):
+            yield Label(f"[bold]Adopt orphan:[/bold] [dark_orange]{self._orphan_name}[/dark_orange]", id="adopt-title")
+            items = [ListItem(Label(f"{short}  [dim]({name})[/dim]")) for name, short, _ in self._sources]
+            yield ListView(*items, id="adopt-list")
+            yield Label("[bold]Enter[/bold] adopt (select item)  │  [bold]Esc[/bold] cancel", id="adopt-buttons")
+
+    def on_mount(self) -> None:
+        self.query_one("#adopt-list", ListView).focus()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Enter on a list item confirms the selection."""
+        lv = self.query_one("#adopt-list", ListView)
+        idx = lv.index
+        if idx is not None and 0 <= idx < len(self._sources):
+            _, _, path = self._sources[idx]
+            self.dismiss(path)
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_cursor_down(self) -> None:
+        self.query_one("#adopt-list", ListView).action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#adopt-list", ListView).action_cursor_up()
