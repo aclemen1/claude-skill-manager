@@ -566,7 +566,8 @@ class SkillManagerApp(App):
 
         for change in self.pending.installs:
             if change.source_qname.startswith("plugin:") or change.source_qname.startswith("mp:"):
-                ok, msg = cc_plugin_install(change.source_qname, change.target, current_installs, self.items)
+                tgt_cfg = self.all_targets.get(change.target)
+                ok, msg = cc_plugin_install(change.source_qname, change.target, current_installs, self.items, target_cfg=tgt_cfg)
                 if not ok:
                     errors.append(msg)
             else:
@@ -584,7 +585,8 @@ class SkillManagerApp(App):
 
         for change in self.pending.uninstalls:
             if change.source_qname.startswith("plugin:") or change.source_qname.startswith("mp:"):
-                ok, msg = cc_plugin_uninstall(change.source_qname, change.target, current_installs, self.items)
+                tgt_cfg = self.all_targets.get(change.target)
+                ok, msg = cc_plugin_uninstall(change.source_qname, change.target, current_installs, self.items, target_cfg=tgt_cfg)
                 if not ok:
                     errors.append(msg)
             else:

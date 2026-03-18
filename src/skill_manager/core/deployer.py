@@ -405,16 +405,29 @@ def _resolve_plugin_ref(
     return None
 
 
-def cc_plugin_install(source_qname: str, target: str, current_installs: list[Install] | None = None, items: list[DiscoveredItem] | None = None) -> tuple[bool, str]:
+def _project_dir_from_target(target_cfg: "TargetConfig | None") -> str | None:
+    """Resolve a TargetConfig to the project root directory path."""
+    if not target_cfg:
+        return None
+    p = target_cfg.path
+    if p.name == "skills" and p.parent.name == ".claude":
+        return str(p.parent.parent)
+    if p.name == ".claude":
+        return str(p.parent)
+    return str(p)
+
+
+def cc_plugin_install(source_qname: str, target: str, current_installs: list[Install] | None = None, items: list[DiscoveredItem] | None = None, target_cfg: "TargetConfig | None" = None) -> tuple[bool, str]:
     import subprocess
     ref = _resolve_plugin_ref(source_qname, current_installs, items)
     if not ref:
         skill = source_qname.rsplit(":", 1)[-1] if ":" in source_qname else source_qname
         return False, f"No plugin ref found for '{skill}'"
     scope = "user" if target == "user" else "project"
+    cwd = _project_dir_from_target(target_cfg) if scope == "project" else None
     cmd = ["claude", "plugin", "install", ref, "--scope", scope]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=cwd)
         if result.returncode == 0:
             return True, f"claude plugin install {ref} --scope {scope}"
         return False, f"Failed: {result.stderr.strip() or result.stdout.strip()}"
@@ -422,16 +435,17 @@ def cc_plugin_install(source_qname: str, target: str, current_installs: list[Ins
         return False, f"Error: {e}"
 
 
-def cc_plugin_uninstall(source_qname: str, target: str, current_installs: list[Install] | None = None, items: list[DiscoveredItem] | None = None) -> tuple[bool, str]:
+def cc_plugin_uninstall(source_qname: str, target: str, current_installs: list[Install] | None = None, items: list[DiscoveredItem] | None = None, target_cfg: "TargetConfig | None" = None) -> tuple[bool, str]:
     import subprocess
     ref = _resolve_plugin_ref(source_qname, current_installs, items)
     if not ref:
         skill = source_qname.rsplit(":", 1)[-1] if ":" in source_qname else source_qname
         return False, f"No installed plugin found for '{skill}' — nothing to uninstall"
     scope = "user" if target == "user" else "project"
+    cwd = _project_dir_from_target(target_cfg) if scope == "project" else None
     cmd = ["claude", "plugin", "uninstall", ref, "--scope", scope]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=cwd)
         if result.returncode == 0:
             return True, f"claude plugin uninstall {ref} --scope {scope}"
         return False, f"Failed: {result.stderr.strip() or result.stdout.strip()}"
