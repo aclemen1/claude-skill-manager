@@ -566,10 +566,11 @@ target_paths = ["~"]
 def schema():
     """Output a JSON schema describing all csm commands, concepts, and config format — designed for LLM/agent consumption."""
     import json
+    import importlib.metadata
 
     schema = {
         "tool": "csm",
-        "version": "0.1.0",
+        "version": importlib.metadata.version("claude-skill-manager"),
         "description": (
             "Claude Skill Manager (csm) manages Claude Code skills across projects. "
             "It discovers skills from local directories and Claude Code marketplace plugins, "

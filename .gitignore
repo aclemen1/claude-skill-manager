@@ -24,3 +24,6 @@ Thumbs.db
 
 # asciinema recordings (keep the GIF, not the cast)
 docs/demo.cast
+
+# Local Claude instructions
+CLAUDE.local.md
