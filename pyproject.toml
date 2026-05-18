@@ -1,6 +1,6 @@
 [project]
 name = "claude-skill-manager"
-version = "1.6.0"
+version = "1.7.0"
 description = "Manage Claude Code skills from multiple sources with symlink-based deployment"
 readme = "README.md"
 license = "MIT"
@@ -16,6 +16,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
